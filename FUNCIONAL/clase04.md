@@ -1,4 +1,3 @@
-````markdown
 # Módulo 3 — Paradigma Funcional: Modelado de información
 
 ## Listas
@@ -283,4 +282,7 @@ parcialPDP = Parcial "PDP" 3
 ## Conceptos clave
 
 `lista` · `tupla` · `data` · `record syntax` · `pattern matching` · `sinónimo de tipo` · `múltiples constructores` · `deriving Show` · `efecto colateral` · `abstracción`
-````
+
+```
+
+```

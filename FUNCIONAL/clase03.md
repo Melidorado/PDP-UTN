@@ -1,4 +1,3 @@
-````markdown
 # Módulo 2 — Paradigma Funcional: Composición y Aplicación Parcial
 
 ## Composición
@@ -197,4 +196,7 @@ costoEstacionamiento = (* 50) . max 2
 ## Conceptos clave
 
 `composición` · `aplicación parcial` · `acoplamiento` · `tupla` · `pattern matching` · `type alias` · `notación punto`
-````
+
+```
+
+```

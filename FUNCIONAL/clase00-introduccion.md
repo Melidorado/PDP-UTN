@@ -1,4 +1,3 @@
-````markdown
 # Paradigmas de Programación — Introducción
 
 ## ¿Qué es un paradigma?
@@ -32,6 +31,7 @@ Un conjunto de ideas (herramientas conceptuales) que configura una respuesta a "
 -- Haskell: foco en el qué, no el cómo
 pares = filter even
 ```
+
 ````
 
 ---
@@ -57,3 +57,4 @@ Es la distancia entre el lenguaje del programador/usuario y el lenguaje que ejec
 ```
 
 ```
+````

@@ -1,4 +1,3 @@
-````markdown
 # Módulo 7 — Paradigma Funcional: Sistema de Tipos
 
 ## Introducción
@@ -538,4 +537,7 @@ instance Show NotaConceptual where
 ## Conceptos clave
 
 `typeclass` · `Num` · `Ord` · `Eq` · `Show` · `Enum` · `polimorfismo paramétrico` · `polimorfismo ad-hoc` · `variable de tipo` · `inferencia de tipos` · `deriving` · `instance` · `definición mínima` · `método default` · `instancia` · `interfaz`
-````
+
+```
+
+```

@@ -1,4 +1,3 @@
-````markdown
 # Módulo 4 — Paradigma Funcional: Recursividad y Evaluación Diferida
 
 ## Recursividad
@@ -224,4 +223,7 @@ La **evaluación diferida** (o perezosa) consiste en evaluar los argumentos solo
 ## Conceptos clave
 
 `recursividad` · `caso base` · `caso recursivo` · `inducción` · `pattern matching` · `evaluación diferida` · `lazy evaluation` · `listas infinitas` · `transparencia referencial`
-````
+
+```
+
+```
