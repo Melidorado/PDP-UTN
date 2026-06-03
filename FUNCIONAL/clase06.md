@@ -466,7 +466,6 @@ Con una lista de 10.000 elementos hay 10.000 operaciones pendientes apiladas en 
 
 > `foldr` compensa su desventaja con el stack gracias a la **evaluación diferida**: si la función binaria puede determinar el resultado sin evaluar el segundo argumento (como `False && _`), no necesita seguir recorriendo la lista y termina antes.
 
-````
 
 ### ¿Qué es la recursividad a la cola (tail recursion)?
 
