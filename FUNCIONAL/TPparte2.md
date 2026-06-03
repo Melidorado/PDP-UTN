@@ -25,6 +25,11 @@
     - [Sobre la abstracción general](#sobre-la-abstracción-general)
     - [Sobre mi parte (Integrante 3)](#sobre-mi-parte-integrante-3)
     - [Sobre conceptos generales](#sobre-conceptos-generales)
+  - [Eta reduction](#eta-reduction)
+    - [Dónde SÍ se aplica](#dónde-sí-se-aplica)
+    - [Dónde NO se aplica y por qué](#dónde-no-se-aplica-y-por-qué)
+    - [Regla general](#regla-general)
+  - [Aplicación parcial en el punto 1.4](#aplicación-parcial-en-el-punto-14)
 
 ---
 
@@ -323,3 +328,109 @@ Haskell no evalúa expresiones hasta que su valor es necesario. Permite definir 
 
 **¿Qué es una lista infinita en Haskell?**
 Una estructura definida recursivamente en términos de sí misma. Haskell la construye elemento a elemento solo cuando se necesita, gracias a lazy evaluation. Ejemplo: `soloVacias = temporadaVacia : soloVacias`.
+
+## Eta reduction
+
+Eta reduction es cuando eliminás el último parámetro de una función porque aparece aplicado directamente en ambos lados:
+
+```haskell
+f x = g x  -- con eta reduction queda: f = g
+```
+
+### Dónde SÍ se aplica
+
+**Las tres funciones del punto 1:**
+
+```haskell
+soloEventosQueMejoranPrecio   = aplicarEventosQue (>) precioBase
+soloEventosQueAchicanCatalogo = aplicarEventosQue (<) cantExpansiones
+soloEventosQueMejoranImpacto  = aplicarEventosQue (>) impacto
+```
+
+Sin eta reduction serían:
+
+```haskell
+soloEventosQueMejoranImpacto temporada juego = aplicarEventosQue (>) impacto temporada juego
+```
+
+Se eliminaron `temporada` y `juego` porque aparecen al final en ambos lados. Funciona porque Haskell está currificado — aplicar parcialmente los primeros dos argumentos devuelve una función que espera los dos restantes.
+
+**`aplicarTemporada`** — se _podría_ aplicar eta reduction sobre `juego`:
+
+```haskell
+-- como está
+aplicarTemporada temporada juego = aplicarEventos (listaDeEventos temporada) juego
+-- con eta reduction
+aplicarTemporada temporada = aplicarEventos (listaDeEventos temporada)
+```
+
+No se hizo, probablemente por claridad.
+
+### Dónde NO se aplica y por qué
+
+**`aplicarEventos`:** `juego` no aparece al final de la expresión derecha sino en el medio como segundo argumento de `foldl`. Eta reduction solo aplica cuando el parámetro es el último argumento en ambos lados.
+
+```haskell
+aplicarEventos eventos juego =
+  foldl (\juegoAcumulado evento -> evento juegoAcumulado) juego eventos
+```
+
+**`mejoroSegun`:** `juego` aparece dos veces en el lado derecho (`evento juego` y `criterio juego`). Eta reduction solo funciona cuando el parámetro aparece exactamente una vez, al final.
+
+```haskell
+mejoroSegun criterio evento juego = criterio (evento juego) > criterio juego
+```
+
+**`impactosAscendentes`:** tiene múltiples casos con pattern matching — necesita el parámetro visible para hacer el match, y `juego` aparece múltiples veces en el cuerpo.
+
+### Regla general
+
+| Condición                                                       | ¿Eta reduction? |
+| --------------------------------------------------------------- | --------------- |
+| El parámetro es el último en ambos lados y aparece una sola vez | ✓ Sí            |
+| El parámetro aparece más de una vez en el lado derecho          | ✗ No            |
+| El parámetro aparece en el medio de la expresión derecha        | ✗ No            |
+| Hay pattern matching sobre ese parámetro                        | ✗ No            |
+
+## Aplicación parcial en el punto 1.4
+
+La firma completa de `aplicarEventosQue` espera 4 argumentos en orden:
+
+```haskell
+aplicarEventosQue :: (Number -> Number -> Bool) -> Criterio -> Temporada -> Videojuego -> Videojuego
+```
+
+1. un comparador `(Number -> Number -> Bool)`
+2. un criterio `Criterio`
+3. una temporada `Temporada`
+4. un juego `Videojuego`
+
+Cuando escribimos:
+
+```haskell
+soloEventosQueMejoranImpacto = aplicarEventosQue (>) impacto
+```
+
+Se le pasan solo los primeros dos — `(>)` como comparador e `impacto` como criterio. Como todas las funciones en Haskell están currificadas, aplicar menos argumentos de los que espera devuelve una nueva función que espera el resto.
+
+`soloEventosQueMejoranImpacto` no es el resultado de llamar a `aplicarEventosQue` — es una **nueva función** con firma:
+
+```haskell
+soloEventosQueMejoranImpacto :: Temporada -> Videojuego -> Videojuego
+```
+
+Los dos primeros argumentos quedaron fijos (`(>)` e `impacto`), y los dos últimos (`Temporada` y `Videojuego`) se reciben recién cuando alguien llama a `soloEventosQueMejoranImpacto` en los tests.
+
+Se puede pensar así:
+
+```
+aplicarEventosQue → recibe (>)  → recibe impacto  → queda esperando Temporada y Videojuego
+     4 args           3 restantes    2 restantes                    ↓
+                                                      soloEventosQueMejoranImpacto
+```
+
+Esto es lo que permite la eta reduction: como los últimos dos argumentos todavía no fueron aplicados, no hace falta escribirlos explícitamente en la definición.
+
+```
+
+```
