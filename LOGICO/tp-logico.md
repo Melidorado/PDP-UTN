@@ -1397,9 +1397,33 @@ El último test es el que detecta las dos versiones incorrectas de una sola vez:
 
 **Consigna**: relacionar un luchador, una cantidad máxima de técnicas y un combo que pueda realizar. Un combo está formado **únicamente por técnicas que sabe el luchador** y puede contener **entre cero y la cantidad máxima**. Debe ser **inversible para el luchador y el combo**.
 
-## 1. Lo primero: deducir qué es un combo
+## 0. Antes que nada: ¿qué es un combo?
 
-Antes de escribir nada hay que decidir si un combo es una **secuencia** (importa el orden, sería una permutación) o un **conjunto** (no importa el orden). El enunciado no lo dice con palabras, pero **lo dice con los números**:
+**Un combo es una lista de técnicas.** Nada más que eso.
+
+```prolog
+Combo = [golpe(directo, cabeza, 9), golpe(patada, cabeza, 10)]
+```
+
+Ése es un combo de Facu con dos técnicas: su directo y su patada.
+
+> ⚠️ **La confusión más fácil de tener**: en `comboPosible(facu, 2, Combo)`, el **2 no es la cantidad de técnicas que sabe Facu** (sabe 3). Es el **máximo de técnicas que puede tener cada combo**.
+
+Facu sabe directo, gancho y patada. Con máximo 2, sus combos posibles son **7**:
+
+| | Combo |
+|---|---|
+| con 0 técnicas | `[]` |
+| con 1 técnica | `[directo]`, `[gancho]`, `[patada]` |
+| con 2 técnicas | `[directo, gancho]`, `[directo, patada]`, `[gancho, patada]` |
+
+1 + 3 + 3 = 7. No aparece `[directo, gancho, patada]` porque tiene 3 y el máximo era 2. Por eso con máximo 3 son 8.
+
+*(De acá en adelante escribo `directo` en lugar de `golpe(directo, cabeza, 9)` para que las trazas entren en pantalla. Es lo mismo: `subconjunto/2` mueve los términos enteros y no le importa qué tienen adentro.)*
+
+## 1. Deducir si un combo es un conjunto o una secuencia
+
+El enunciado no lo dice con palabras, pero **lo dice con los números**:
 
 | | Enunciado | Si fueran subconjuntos | Si fueran permutaciones |
 |---|---|---|---|
@@ -1410,7 +1434,7 @@ Antes de escribir nada hay que decidir si un combo es una **secuencia** (importa
 
 **Un combo es un subconjunto**: el orden no importa y no se repiten técnicas. Si el orden importara, `[directo, gancho]` y `[gancho, directo]` serían dos combos distintos y Facu tendría 10, no 7.
 
-> 🎓 Cuando el enunciado da ejemplos numéricos, **son la especificación**. Contrastarlos con las dos interpretaciones posibles resuelve la ambigüedad sin tener que adivinar.
+> 🎓 Cuando el enunciado da ejemplos numéricos, **son la especificación**. Contrastarlos con las dos interpretaciones posibles resuelve la ambigüedad sin adivinar.
 
 ## 2. La solución
 
@@ -1424,48 +1448,268 @@ comboPosible(Luchador, CantidadMaxima, Combo) :-
 
 subconjunto([], []).
 
-subconjunto([Tecnica | Tecnicas], [Tecnica | Combo]) :-
-	subconjunto(Tecnicas, Combo).
+subconjunto([Tecnica | RestoTecnicas], [Tecnica | Combo]) :-
+	subconjunto(RestoTecnicas, Combo).
 
-subconjunto([_ | Tecnicas], Combo) :-
-	subconjunto(Tecnicas, Combo).
+subconjunto([_ | RestoTecnicas], Combo) :-
+	subconjunto(RestoTecnicas, Combo).
 ```
 
-Se lee de corrido: *"junto todas las técnicas que sabe el luchador, tomo un subconjunto cualquiera, y verifico que no tenga más elementos que el máximo permitido"*.
+## 3. Las tres cláusulas de `subconjunto/2`
 
-## 3. Cómo funciona `subconjunto/2`
-
-Es el corazón del punto y conviene poder explicarlo en el pizarrón. La idea es que **por cada elemento de la lista hay exactamente dos caminos: entra al combo o no entra**.
+Primero, la sintaxis de listas, que es de donde sale todo:
 
 ```prolog
-subconjunto([], []).                                    % caso base: lista vacía → combo vacío
+[directo, gancho, patada]  =  [Cabeza | Cola]
 
-subconjunto([Tecnica | Tecnicas], [Tecnica | Combo]) :- % la técnica ENTRA
-	subconjunto(Tecnicas, Combo).
-
-subconjunto([_ | Tecnicas], Combo) :-                   % la técnica NO entra
-	subconjunto(Tecnicas, Combo).
+     Cabeza = directo        Cola = [gancho, patada]
 ```
 
-Con dos elementos, el árbol de backtracking es:
+La barra `|` **parte una lista en su primer elemento y el resto**.
+
+**Cláusula 1 — el caso base**
+```prolog
+subconjunto([], []).
+```
+El único subconjunto de la lista vacía es la lista vacía. Es donde frena la recursión, y **no tiene cuerpo**.
+
+**Cláusulas 2 y 3 — la técnica entra o no entra**
+
+Puestas una debajo de la otra se ve que **la única diferencia está en el segundo argumento**:
+
+```prolog
+subconjunto([Tecnica | RestoTecnicas], [Tecnica | Combo]) :- subconjunto(RestoTecnicas, Combo).
+subconjunto([_       | RestoTecnicas],            Combo ) :- subconjunto(RestoTecnicas, Combo).
+                                       ↑↑↑↑↑↑↑↑↑
+                                  la única diferencia
+```
+
+En **las dos** la primera lista se achica igual (pierde su primer elemento). Lo que cambia es el combo:
+
+- **Cláusula 2**: el combo **crece** — le pega `Tecnica` adelante. → la técnica **entra**
+- **Cláusula 3**: el combo **pasa igual** — no le agrega nada. → la técnica **no entra**
+
+Como cada técnica tiene 2 opciones, salen **2ⁿ** subconjuntos. Con las 3 de Facu, 8. Con las 6 de Mati, 64.
+
+## 4. Paso a paso de la primera propuesta
+
+Ésta es la parte que hay que poder contar en el pizarrón. Consulta:
+
+```prolog
+?- subconjunto([directo, gancho, patada], TuCombo).
+```
+
+- La **primera** lista viene **llena** (la armó el `findall`).
+- `TuCombo` viene **vacía**: es una variable libre. **Eso es lo que hay que construir.**
+
+Algo importante: **cada vez que se usa una cláusula, sus variables son nuevas**. Por eso las numero `Combo1`, `Combo2`, `Combo3`.
+
+### Nivel 1 — `subconjunto([directo, gancho, patada], TuCombo)`
+
+Prolog prueba la cláusula 1 (`subconjunto([], [])`): no sirve, la lista no está vacía. Pasa a la cláusula 2.
 
 ```
-subconjunto([a, b], Combo)
-├── a entra  → subconjunto([b], C)
-│              ├── b entra    → [a, b]
-│              └── b no entra → [a]
-└── a no entra → subconjunto([b], C)
-                 ├── b entra    → [b]
-                 └── b no entra → []
+primer argumento:  [directo, gancho, patada]  con  [Tecnica | RestoTecnicas]
+                   Tecnica = directo     RestoTecnicas = [gancho, patada]
+
+segundo argumento: TuCombo  con  [Tecnica | Combo1]
+                   TuCombo = [directo | Combo1]
+```
+👉 Ya se sabe que el combo **empieza con directo**. `Combo1` queda pendiente.
+
+El cuerpo pide: `subconjunto([gancho, patada], Combo1)`
+
+### Nivel 2 — `subconjunto([gancho, patada], Combo1)`
+
+```
+Tecnica = gancho     RestoTecnicas = [patada]
+Combo1  = [gancho | Combo2]
+```
+El cuerpo pide: `subconjunto([patada], Combo2)`
+
+### Nivel 3 — `subconjunto([patada], Combo2)`
+
+```
+Tecnica = patada     RestoTecnicas = []
+Combo2  = [patada | Combo3]
+```
+El cuerpo pide: `subconjunto([], Combo3)`
+
+### Nivel 4 — `subconjunto([], Combo3)`
+
+Acá la cláusula 2 **ya no unifica**: `[]` no se puede partir en cabeza y cola. Entra la cláusula 1:
+
+```
+Combo3 = []
+```
+Como la cláusula 1 no tiene cuerpo, **la recursión termina**.
+
+### Y ahora se arma la respuesta, de abajo hacia arriba
+
+Cada nivel tenía un pendiente. Ahora se completan:
+
+```
+Combo3  = []
+Combo2  = [patada | Combo3]  = [patada]
+Combo1  = [gancho | Combo2]  = [gancho, patada]
+TuCombo = [directo | Combo1] = [directo, gancho, patada]
 ```
 
-Cuatro combos, que es 2² — el **conjunto de partes**. Con las 6 técnicas de Mati son 2⁶ = 64 subconjuntos, de los cuales `Cantidad =< 2` deja pasar 22.
+> 🎓 **La idea**: al **bajar**, la primera lista se vacía y el combo se va armando dejando un hueco en cada nivel. Al llegar a `[]`, el último hueco se llena. Al **volver**, los huecos se completan hacia arriba y aparece la lista entera.
 
-**Por qué no genera repetidos**: las dos cláusulas recursivas son **excluyentes** (o la técnica está en el combo, o no está) y el orden original de la lista se mantiene. Por eso cada subconjunto se produce por **un solo camino** del árbol. Verificado con un test que compara la cantidad de combos contra la de combos únicos.
+## 5. Cómo vuelve atrás: las marcas
 
-> ⚠️ Consecuencia del orden: el combo `[gancho, directo]` (al revés del orden en que aparecen en la base) **no** unifica. Y está bien: representar cada subconjunto en un único orden canónico es justamente lo que evita contar dos veces el mismo combo. Si aceptáramos cualquier orden, Facu tendría 10 combos y no 7.
+`[directo, gancho, patada]` mide 3, así que falla el `Cantidad =< 2`. ¿Cómo sabe Prolog qué deshacer?
 
-## 4. Por qué el `findall` acá sí es para obtener la lista
+**No lo decide: va anotando marcas mientras avanza.** Cada vez que aplica una cláusula **habiendo otras sin probar**, deja una:
+
+| Nivel | Lista que recibió | Cláusula usada | ¿Le quedan otras? | |
+|---|---|---|---|---|
+| 1 | `[directo, gancho, patada]` | 2 | sí, la 3 | 📌 marca |
+| 2 | `[gancho, patada]` | 2 | sí, la 3 | 📌 marca |
+| 3 | `[patada]` | 2 | sí, la 3 | 📌 marca |
+| 4 | `[]` | 1 | **no** | sin marca |
+
+El nivel 4 **no deja marca**: para `[]` las cláusulas 2 y 3 ni siquiera unifican, las dos piden una lista con al menos un elemento.
+
+**Al fallar, Prolog va a la marca más reciente** — la del nivel 3 — y hace tres cosas:
+
+1. **Borra todo lo que se hizo después de esa marca**:
+   ```
+   Combo3 = []                  ← se borra
+   Combo2 = [patada | Combo3]   ← se borra
+   ```
+   Lo de **antes** queda intacto: `TuCombo = [directo | Combo1]` y `Combo1 = [gancho | Combo2]`.
+
+2. **Reintenta ese nivel con la cláusula 3**:
+   ```
+   [patada] con [_ | RestoTecnicas]  →  RestoTecnicas = []
+   Combo2 pasa igual, sin agregar nada
+   cuerpo: subconjunto([], Combo2)  →  cláusula 1  →  Combo2 = []
+   ```
+
+3. **Rearma hacia arriba**:
+   ```
+   Combo2  = []
+   Combo1  = [gancho]
+   TuCombo = [directo, gancho]        ← segunda propuesta, mide 2, pasa ✅
+   ```
+
+> 🎓 Las marcas funcionan como una **pila**: se apilan al bajar y al fallar se saca **la de más arriba**, la más reciente. Por eso siempre cambia primero la **última** técnica.
+
+## 6. Las 8 propuestas, una por una
+
+Cláusula 2 = entra, cláusula 3 = no entra. Prolog **siempre prueba primero la 2**.
+
+**1ª → `[directo, gancho, patada]`** ❌ mide 3, falla el `=< 2`
+```
+directo → cláusula 2 (entra)
+gancho  → cláusula 2 (entra)
+patada  → cláusula 2 (entra)
+[]      → cláusula 1 (fin)
+```
+
+**2ª → `[directo, gancho]`** ✅ *1ª respuesta* — se deshace la última marca
+```
+directo → 2
+gancho  → 2
+patada  → 3 (no entra)     ← lo único que cambió
+```
+
+**3ª → `[directo, patada]`** ✅ — `patada` agotó sus dos cláusulas, sube a `gancho`; `patada` reinicia
+```
+directo → 2
+gancho  → 3                ← cambió
+patada  → 2                ← reiniciada
+```
+
+**4ª → `[directo]`** ✅
+```
+directo → 2
+gancho  → 3
+patada  → 3                ← cambió
+```
+
+**5ª → `[gancho, patada]`** ✅ — `patada` y `gancho` agotadas, sube hasta `directo`
+```
+directo → 3                ← cambió
+gancho  → 2                ← reiniciada
+patada  → 2                ← reiniciada
+```
+
+**6ª → `[gancho]`** ✅
+```
+directo → 3
+gancho  → 2
+patada  → 3                ← cambió
+```
+
+**7ª → `[patada]`** ✅
+```
+directo → 3
+gancho  → 3                ← cambió
+patada  → 2                ← reiniciada
+```
+
+**8ª → `[]`** ✅
+```
+directo → 3
+gancho  → 3
+patada  → 3                ← cambió
+```
+
+**Se acabó**: no queda ninguna marca sin usar. `subconjunto` falla y `comboPosible` no tiene más para dar. **7 respuestas.**
+
+> 🎓 **La regla que se repite en los 8 pasos**: se deshace la **marca más reciente** que todavía tenga la cláusula 3 sin probar, y todo lo que venga **después** de esa técnica **reinicia por la cláusula 2**.
+>
+> Por eso `patada` cambia en casi todos los pasos (es la última) y `directo` cambia una sola vez (es la primera). Es un cuentakilómetros: la rueda de la derecha gira todo el tiempo.
+
+## 7. Generar y probar: dónde entra `CantidadMaxima`
+
+Fijate el orden de los objetivos:
+
+```prolog
+luchador(facu),                 % 1 sola solución  → nunca se vuelve acá
+findall(..., Tecnicas),         % 1 sola solución  → nunca se vuelve acá
+subconjunto(Tecnicas, Combo),   % 8 soluciones     ← el único con alternativas
+length(Combo, Cantidad),        % depende de Combo → se rehace
+Cantidad =< CantidadMaxima.     % depende de Cantidad → se rehace
+```
+
+Al fallar, Prolog vuelve **al objetivo más reciente que todavía tenga alternativas**. Los dos primeros ya dieron su única respuesta, así que el único al que puede volver es `subconjunto`. Y cuando éste entrega un combo nuevo, todo lo que viene después hay que rehacerlo con el valor nuevo.
+
+**`CantidadMaxima` no frena la generación: filtra después.** `subconjunto/2` genera **todos** los subconjuntos, sin enterarse del límite. Con Mati:
+
+| | |
+|---|---|
+| `subconjunto/2` genera | **64** combos (2⁶) |
+| el `=< 2` deja pasar | **22** |
+| el `=< 2` descarta | **42** |
+
+> 🎓 Es el patrón **generar y probar**: uno propone, otro filtra. El mismo generador + condiciones de todos los puntos.
+
+Es ineficiente a propósito: con 6 técnicas son 64 caminos, nada. Con 30 técnicas serían mil millones y habría que meter el límite adentro de la generación. Para este TP no hace falta.
+
+## 8. ⚠️ Volver atrás no pasa sólo cuando algo falla
+
+De las 8 propuestas, **una sola falla**. Las otras 7 pasan. Entonces, ¿por qué sigue buscando después de una que pasó?
+
+Porque hay **dos motivos** para volver atrás:
+
+1. Algo **falló** (el combo de 3 técnicas).
+2. **Alguien pidió otra respuesta.**
+
+Ese "alguien" es quien haga la consulta. Si preguntás con `findall`, pide soluciones hasta que no queden más — por eso ves las 7. Si pedís una sola, **frena en la primera que pasa**:
+
+```prolog
+?- once(comboPosible(facu, 2, C)).
+C = [golpe(directo,cabeza,9), golpe(gancho,cabeza,8)].
+   % se detuvo acá, los otros 6 ni se generaron
+```
+
+> 🎓 `comboPosible` **no devuelve 7 combos**. Devuelve **un combo por vez**, y da 7 en total si le seguís pidiendo. En la consola de SWI, cada `;` que apretás le pide el siguiente, hasta que dice `false`.
+
+## 9. Por qué el `findall` acá sí es para obtener la lista
 
 Ojo con esto, porque es distinto de los puntos 4 y 8:
 
@@ -1480,7 +1724,7 @@ Acá **sí necesitamos la lista de verdad**, no la usamos para colapsar nada. `s
 | 4 — `esNavajaSuiza` | `distinct/2` | **colapsar** muchas soluciones en una; no se obtiene ningún dato |
 | 9 — `comboPosible` | `findall/3` | **obtener** la lista, que es el dato que necesita la recursión |
 
-## 5. Inversibilidad
+## 10. Inversibilidad
 
 La consigna pide que sea inversible **para el luchador y para el combo** — notá que **no** pide que lo sea para la cantidad máxima, y hay una razón: `Cantidad =< CantidadMaxima` es una comparación aritmética y exige que los dos lados estén ligados.
 
@@ -1499,7 +1743,7 @@ true.                                    % ✅ modo chequeo
 
 Con el combo ligado, `subconjunto/2` funciona como **verificador** en vez de generador: recorre el árbol buscando el camino que produce ese combo exacto. Deja un *choicepoint* (queda árbol sin explorar), pero da **una sola solución** — por eso el test en modo chequeo va marcado `[nondet]`.
 
-## 6. El caso borde: el combo vacío
+## 11. El caso borde: el combo vacío
 
 **El combo vacío siempre es posible**, para cualquier luchador y cualquier máximo (incluso 0), porque el caso base `subconjunto([], [])` se alcanza recorriendo toda la lista por el camino de "no entra".
 
@@ -1507,10 +1751,22 @@ Eso hace que:
 - `comboPosible(mati, 0, Combo)` tenga una única solución: `Combo = []` ✅ (lo dice la consigna)
 - **Fede**, que no sabe ninguna técnica, tenga exactamente un combo posible: el vacío. No es un caso especial que haya que programar aparte — sale solo del caso base.
 
-## 7. Preguntas probables del coloquio
+## 12. Preguntas probables del coloquio
 
 **"¿Cómo supiste que un combo es un subconjunto y no una secuencia ordenada?"**
 Por los números del enunciado. Facu sabe 3 técnicas y tiene 7 combos de hasta 2. Con subconjuntos da 7; con permutaciones daría 10. Lo mismo con los 22 de Mati, que como permutaciones serían 37.
+
+**"¿Qué es un combo?"**
+Una lista de técnicas del luchador. Puede tener desde cero técnicas (la lista vacía) hasta la cantidad máxima que se pida. Ojo que el segundo argumento de `comboPosible/3` es ese máximo, no la cantidad de técnicas que sabe el luchador.
+
+**"¿Cómo sabe Prolog qué deshacer cuando el `=<` falla?"**
+No lo decide: va dejando una marca cada vez que aplica una cláusula habiendo otras sin probar. Al fallar vuelve a la marca **más reciente**, borra las ligaduras hechas después de ella y prueba ahí la cláusula siguiente. Funciona como una pila.
+
+**"Si sólo uno de los 8 combos falla, ¿por qué sigue buscando después de los que pasan?"**
+Porque volver atrás no pasa sólo por fallar: también pasa cuando alguien pide otra respuesta. `findall` pide hasta que no queden más, por eso salen las 7. Con `once/1` frenaría en la primera.
+
+**"¿Dónde se controla la cantidad máxima?"**
+No se controla durante la generación. `subconjunto/2` genera los 2ⁿ subconjuntos igual, y recién después `length/2` mide y `=<` descarta. Con Mati se generan 64 y sobreviven 22. Es el patrón generar y probar.
 
 **"Explicá `subconjunto/2`."**
 Por cada elemento hay dos caminos: entra al combo o no entra. Son las dos cláusulas recursivas. El caso base es lista vacía → combo vacío. Como los dos caminos son excluyentes y se respeta el orden original, cada subconjunto se genera exactamente una vez, y en total salen 2ⁿ.
@@ -1527,7 +1783,7 @@ Tiene exactamente un combo posible, el vacío, para cualquier cantidad máxima. 
 **"¿No genera combos repetidos?"**
 No. Hay un test que compara la cantidad de combos generados contra la cantidad de combos únicos (con `sort/2`, que además elimina duplicados) y da igual.
 
-## 8. Tests
+## 13. Tests
 
 Los cinco ejemplos de la consigna están como tests, más los bordes:
 
