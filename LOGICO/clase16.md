@@ -317,3 +317,281 @@ Un punto crucial — que no suele estar tan explícito en otros paradigmas — e
 | **Corte por reducción estructural**            | Mecanismo de terminación: cada llamada recursiva recibe una versión más chica de la estructura (ej. la cola de una lista), hasta llegar a un caso que no matchea ninguna cláusula (ej. la lista vacía). |
 | **Caso base implícito**                        | Un caso que no hace falta escribir explícitamente porque, por Principio de Universo Cerrado, simplemente falla al no matchear ninguna cláusula (ej. `elemento(X, [])`).                                 |
 | **`nth1/3` / `nth0/3`**                        | Relacionan la posición de un elemento en una lista, contando desde 1 o desde 0 respectivamente.                                                                                                         |
+
+# Predicado `findall/3` (cierre del Módulo 4: Predicados de Orden Superior)
+
+## 1. El problema que resuelve `findall`
+
+```prolog
+padre(homero, bart).
+padre(homero, maggie).
+padre(homero, lisa).
+```
+
+Con lo que ya sabemos podemos hacer muchas consultas:
+
+```prolog
+?- padre(homero, bart).
+true.
+
+?- padre(homero, _).
+true.
+
+?- padre(Padre, bart).
+Padre = homero.
+
+?- padre(homero, Hijo).
+Hijo = bart ;
+Hijo = maggie ;
+Hijo = lisa.
+
+?- padre(Padre, Hijo).
+Padre = homero, Hijo = bart ;
+...
+```
+
+Pero hay preguntas que se vuelven complicadas o directamente imposibles de responder así. Por ejemplo: **¿cuántos hijos tiene Homero?** Con lo que tenemos, tendríamos que hacer `padre(homero, Hijo)` y **contar a mano** cuántas respuestas nos da — impracticable si hay muchas, y además no responde la pregunta de forma directa.
+
+Queremos un predicado `cantidadDeHijos/2` que relacione directamente una persona con la cantidad de hijos que tiene:
+
+```prolog
+?- cantidadDeHijos(homero, Cantidad).
+Cantidad = 3.
+```
+
+Para definirlo por comprensión (que sirva para cualquier persona, no solo Homero), nos falta una pieza: una forma de juntar **todas** las respuestas de una consulta existencial en una sola lista. Eso es exactamente lo que hace `findall/3`:
+
+```prolog
+findall(UnIndividuoOVariable, Consulta, Lista)
+```
+
+`findall/3` relaciona un individuo o variable, con una consulta, y con la **lista** de todos los individuos que satisfacen esa consulta.
+
+```prolog
+cantidadDeHijos(Padre, Cantidad) :-
+    findall(Hijo, padre(Padre, Hijo), Hijos),
+    length(Hijos, Cantidad).
+```
+
+```prolog
+?- cantidadDeHijos(homero, Cantidad).
+Cantidad = 3.
+```
+
+La variable `Padre` llega **ligada** desde la cláusula que define `cantidadDeHijos/2`, así que la consulta interna del `findall` (`padre(Padre, Hijo)`) efectivamente tiene 3 respuestas para ese `Padre` en particular.
+
+## 2. Inversibilidad de `findall`
+
+Agreguemos más hechos a la base:
+
+```prolog
+padre(homero, bart).
+padre(homero, maggie).
+padre(homero, lisa).
+padre(juan, fede).
+padre(nico, julieta).
+```
+
+Y probemos dejar `Padre` libre:
+
+```prolog
+?- cantidadDeHijos(Padre, Cantidad).
+Cantidad = 5.
+```
+
+**No funciona como esperaríamos** (nos gustaría ver los distintos padres con su cantidad correspondiente, no un solo número). ¿Por qué? Porque `Padre` no llega ligado a `findall`, así que la consulta interna termina siendo `padre(Padre, Hijo)` con **ambas** variables libres — y eso tiene, en total, **5 soluciones** en toda la base (todos los pares padre-hijo que existen). `findall/3` no tira error ni falla por tener variables libres de más (a diferencia de `is/2` o las comparaciones): simplemente junta **todas** las soluciones que encuentre, sin importar que eso mezcle resultados de personas distintas.
+
+**Solución**: como siempre, ligar la variable con un **predicado generador** antes de llegar al `findall`:
+
+```prolog
+cantidadDeHijos(Padre, Cantidad) :-
+    persona(Padre),   % generación: Padre llega ligado al findall
+    findall(Hijo, padre(Padre, Hijo), Hijos),
+    length(Hijos, Cantidad).
+```
+
+**Otra forma de generar el universo**, considerando no a "todas las personas" sino solo a los que efectivamente son padres:
+
+```prolog
+cantidadDeHijos(Padre, Cantidad) :-
+    padre(Padre, _),   % generación: solo entre quienes ya son padres
+    findall(Hijo, padre(Padre, Hijo), Hijos),
+    length(Hijos, Cantidad).
+```
+
+### La forma de generar cambia el resultado — no es un detalle menor
+
+```prolog
+?- cantidadDeHijos(bart, Cantidad).
+```
+
+- Con `persona(Padre)` como generador (si `bart` está considerado una persona): `Cantidad = 0` — bart es una persona válida, simplemente no tiene hijos.
+- Con `padre(Padre, _)` como generador: `false` — bart directamente no es un padre, así que ni siquiera entra en el universo que estamos generando.
+  En este caso se considera "más saludable" un `0` que un `false`, pero lo importante es entender que **la forma de generar el universo es una decisión de diseño**, y distintas decisiones pueden dar resultados distintos ante el mismo caso límite.
+
+Si no tenemos ya un predicado `persona/1`, hay que agregarlo, con las dos formas que ya conocemos:
+
+```prolog
+% por extensión
+persona(bart).
+persona(lisa).
+% ... etc.
+
+% por comprensión
+persona(Papa) :- padre(Papa, _).
+persona(Hijo) :- padre(_, Hijo).
+```
+
+## 3. Consultas más complejas dentro de `findall`
+
+El segundo parámetro de `findall` puede ser **cualquier consulta**, no solo un predicado suelto — se pueden combinar varias condiciones, encerrándolas entre paréntesis (para no romper la aridad 3 de `findall`):
+
+```prolog
+findall(X, (p(X), q(X), r(X)), Xs)
+```
+
+Ejemplo: cuántos hijos **varones** tiene una persona:
+
+```prolog
+cuantosPibes(Persona, Cantidad) :-
+    persona(Persona),
+    findall(Hijo, (padre(Persona, Hijo), varon(Hijo)), Varones),
+    length(Varones, Cantidad).
+```
+
+## 4. Intersección de conjuntos
+
+```prolog
+interseccion(Xs, Ys, Zs) :-
+    findall(E, (member(E, Xs), member(E, Ys)), Zs).
+```
+
+(Este es justamente el mismo patrón que vimos antes al hablar de `member(X,A), member(X,B)` dentro de `forall` para `incluido/2` — acá, en vez de verificar que se cumpla para todos, juntamos en una lista los que sí cumplen ambas condiciones.)
+
+## 5. Ejemplo: niños y juegos
+
+```prolog
+% jugoCon/3: nene, juego, minutos
+jugoCon(tobias, pelota, 15).
+jugoCon(tobias, bloques, 20).
+jugoCon(tobias, rasti, 15).
+jugoCon(tobias, dakis, 5).
+jugoCon(tobias, casita, 10).
+jugoCon(cata, muniecas, 30).
+jugoCon(cata, rasti, 20).
+jugoCon(luna, muniecas, 10).
+```
+
+```prolog
+juegosQueJugo(Nene, CantidadJuegos) :-
+    findall(Juego, jugoCon(Nene, Juego, _), Juegos),
+    length(Juegos, CantidadJuegos).
+
+?- juegosQueJugo(tobias, CuantosJuegos).
+CuantosJuegos = 5.
+
+minutosQueJugo(Nene, CuantosMinutos) :-
+    findall(Minutos, jugoCon(Nene, _, Minutos), ListaMinutos),
+    sumlist(ListaMinutos, CuantosMinutos).
+
+?- minutosQueJugo(cata, Minutos).
+Minutos = 50.
+```
+
+De nuevo, sin generador, `minutosQueJugo(Nene, Minutos)` con `Nene` libre no es inversible correctamente: suma los minutos de **todos** los chicos juntos (`Minutos = 125`), porque `Nene` queda libre dentro del `findall`. La solución es la misma de siempre — generar `Nene` antes:
+
+```prolog
+minutosQueJugo(Nene, CuantosMinutos) :-
+    nene(Nene),
+    findall(Minutos, jugoCon(Nene, _, Minutos), ListaMinutos),
+    sumlist(ListaMinutos, CuantosMinutos).
+```
+
+## 6. Individuos compuestos en el primer parámetro de `findall`
+
+A veces queremos una lista de individuos que **no existen tal cual** en el programa — hace falta combinarlos usando un **functor**.
+
+_Ejemplo_: con un predicado `puntaje(Equipo, CantidadPuntos)`, queremos armar la "tabla de posiciones": una lista donde cada elemento sea un equipo **junto con** su cantidad de puntos.
+
+```prolog
+?- findall(puntos(Equipo, CantidadPuntos),
+           puntaje(Equipo, CantidadPuntos),
+           Tabla).
+```
+
+- `puntos/2` es un **functor** (agrupa equipo y puntos en un solo individuo compuesto), **no** un predicado.
+- `puntaje/2` es el **predicado**, no un functor.
+- `Tabla` termina siendo una lista de functores `puntos(...)`, uno por cada solución de la consulta.
+
+## 7. Ejercicio integrador: coleccionista
+
+```prolog
+tiene(juan, foto([juan, hugo, pedro, lorena, laura], 1988)).
+tiene(juan, foto([juan], 1977)).
+tiene(juan, libro(saramago, "Ensayo sobre la ceguera")).
+tiene(juan, bebida(whisky)).
+tiene(valeria, libro(borges, "Ficciones")).
+tiene(lucas, bebida(cusenier)).
+tiene(pedro, foto([juan, hugo, pedro, lorena, laura], 1988)).
+tiene(pedro, foto([pedro], 2010)).
+tiene(pedro, libro(octavioPaz, "Salamandra")).
+
+premioNobel(octavioPaz).
+premioNobel(saramago).
+```
+
+_"Alguien es coleccionista si todos los elementos que tiene son valiosos: un libro de un premio Nobel es valioso; una foto con más de 3 integrantes es valiosa; una foto anterior a 1990 es valiosa; el whisky es valioso."_
+
+```prolog
+coleccionista(Alguien) :-
+    forall(tiene(Alguien, Cosa), vale(Cosa)).
+
+vale(foto(Gente, _)) :- length(Gente, Cantidad), Cantidad > 3.
+vale(foto(_, Anio)) :- Anio < 1990.
+vale(libro(Escritor, _)) :- premioNobel(Escritor).
+vale(bebida(whisky)).
+```
+
+```prolog
+?- coleccionista(pedro).
+false.
+
+?- coleccionista(juan).
+true.
+```
+
+Como ya sabemos por el módulo de `forall`, no es válido preguntar `coleccionista(Quien)` tal cual está — hace falta un predicado generador para `Alguien`:
+
+```prolog
+coleccionista(Alguien) :-
+    tiene(Alguien, _),
+    forall(tiene(Alguien, Cosa), vale(Cosa)).
+```
+
+(Este ejercicio en particular no necesita `findall` — se resuelve directamente con `forall/2` —, pero se incluye acá porque es el cierre integrador del módulo completo de predicados de orden superior.)
+
+## 8. Resumen del Módulo 4 completo
+
+Mientras que los predicados de **primer orden** definen características o relacionan individuos entre sí, los predicados de **orden superior** trabajan con consultas como argumentos. Conocimos tres: `not/1`, `forall/2` y `findall/3`, que permiten subir el grado de abstracción de nuestras soluciones.
+
+- `forall/2` trabaja en base a la **cuantificación universal**: "para todos se cumple".
+- `not/1` trabaja en base a la **cuantificación individual negativa**: "no existe x tal que cumpla...".
+- `findall/3` permite juntar **todas** las soluciones de una consulta en una lista, algo que el motor de inferencia no nos da "de regalo" con una consulta existencial común.
+  `forall/2` y `not/1` pueden usarse de forma indistinta en muchos casos (son lógicamente equivalentes), aunque trabajar con afirmaciones asertivas (`forall`) suele ser más cómodo de leer que negar predicados (`not`).
+
+Por último, para que estos tres predicados sean **inversibles**, siempre hace falta ligar de antemano las variables que participan, mediante **predicados generadores**:
+
+- en la negación lógica (`not/1`), porque Prolog no puede determinar los individuos que **no** satisfacen un predicado sin conocer primero todo el universo;
+- en `findall/3` y `forall/2`, porque hay que estar atentos a qué variables llegan libres y cuáles ligadas antes de usarlos — de lo contrario, `findall` puede devolver resultados "mezclados" entre distintos casos, y `forall` puede terminar preguntando algo distinto de lo que queríamos.
+
+---
+
+## 📌 Glosario — Findall
+
+| Término                                                | Definición                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`findall/3`**                                        | `findall(Individuo, Consulta, Lista)`: relaciona una plantilla de individuo, una consulta, y la lista de todos los valores que satisfacen esa consulta.                                                                                                                                 |
+| **Inversibilidad de `findall`**                        | Si la variable de "afuera" (ej. la persona sobre la que se pregunta) no llega ligada antes del `findall`, la consulta interna corre con esa variable libre y termina mezclando resultados de todos los individuos posibles — sin dar error, a diferencia de `is/2` o las comparaciones. |
+| **Predicado generador (en findall)**                   | Un predicado (hecho, o definido por extensión/comprensión) que se usa para ligar de antemano la variable "externa" antes de usarla dentro de un `findall`, evitando que se mezclen resultados.                                                                                          |
+| **Individuo compuesto en el 1er parámetro de findall** | Usar un functor en el primer argumento de `findall` para agrupar en un solo individuo información que en la consulta original aparece como variables sueltas (ej. armar una tabla de posiciones).                                                                                       |
+| **`sumlist/2`**                                        | Relaciona una lista de números con la suma total de sus elementos (equivalente a `sum_list/2`).                                                                                                                                                                                         |
