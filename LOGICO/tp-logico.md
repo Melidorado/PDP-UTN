@@ -422,7 +422,7 @@ esPicante(Luchador) :-
 	forall(sabe(Luchador, Tecnica), Tecnica = golpe(_, cabeza, _)).
 ```
 
-…pero `entrenaAlgunaDisciplinaDeParado/1` también se satisface tres veces para Facu, así que habría que envolverla en un `findall` como en el Paso 6, o negar dos veces. **Si les preguntan por esto en el coloquio, la respuesta honesta es reconocerlo y explicar de dónde sale la multiplicidad.**
+…pero `entrenaAlgunaDisciplinaDeParado/1` también se satisface tres veces para Facu, así que habría que envolverla en un `distinct` como en el Paso 6. **Si les preguntan por esto en el coloquio, la respuesta honesta es reconocerlo y explicar de dónde sale la multiplicidad.**
 
 > 🚩 **Decisión: NO lo corregimos.** Es código de otro integrante y su test pasa tal como está. Lo dejo anotado sólo para tenerlo identificado, no para cambiarlo. Si sale en el coloquio, alcanza con reconocer de dónde viene la multiplicidad y decir cómo se resolvería.
 
@@ -544,9 +544,9 @@ Y los sometimientos son exactamente ésos: `triangulo`, `armlock`, `mataleon`, `
 Ahora, ¿cómo digo "**el mismo** sometimiento desde **distintas** posiciones"? Necesito **dos** técnicas del luchador que cumplan dos cosas a la vez:
 
 ```prolog
-sometimientoDesdeDistintasPosiciones(Luchador, Sometimiento) :-
-	sabe(Luchador, piso(Sometimiento, UnaPosicion)),
-	sabe(Luchador, piso(Sometimiento, OtraPosicion)),
+sometimientoDesdeDistintasPosiciones(Luchador) :-
+	sabe(Luchador, piso(Sometimiento, UnaPosicion, _)),
+	sabe(Luchador, piso(Sometimiento, OtraPosicion, _)),
 	UnaPosicion \= OtraPosicion.
 ```
 
@@ -556,7 +556,7 @@ Leelo despacio, porque acá está toda la lógica del punto:
 - **Las variables `UnaPosicion` y `OtraPosicion` son distintas entre sí**, así que pueden tomar valores diferentes... pero por sí solo eso no alcanza, porque *también* podrían tomar el mismo valor. Por eso hace falta la tercera línea.
 - **`UnaPosicion \= OtraPosicion`** es lo que fuerza que sean **distintas**. `\=` significa "no unifica con".
 
-**¿Por qué el predicado tiene dos argumentos y devuelve el sometimiento?** Porque me va a servir en el Paso 6. Por ahora alcanza con saber que relaciona un luchador con cada sometimiento suyo que esté repetido en otra posición.
+**Ojo con `Sometimiento`**: es una variable **interna** de la regla, no un argumento. No sale hacia afuera — sólo sirve para obligar a que las dos líneas `sabe` hablen de la misma técnica. El predicado tiene **un solo argumento**, el luchador, y responde sí o no.
 
 Probémoslo con Mati:
 
@@ -622,7 +622,7 @@ Con las cuatro condiciones armadas, la primera versión completa sería:
 % PRIMERA VERSIÓN (tiene un bug)
 esNavajaSuiza(Luchador) :-
 	esCinturonNegro(Luchador),
-	sometimientoDesdeDistintasPosiciones(Luchador, _),
+	sometimientoDesdeDistintasPosiciones(Luchador),
 	not(sabeAlgunGolpe(Luchador)),
 	not(entrenaAlgunaDisciplinaDeParado(Luchador)).
 ```
@@ -648,7 +648,7 @@ sabe(mati, piso(llaveDeBrazo, espalda)).
 sabe(mati, piso(llaveDeBrazo, montada)).
 ```
 
-hacen que `sometimientoDesdeDistintasPosiciones(mati, _)` se satisfaga de **dos formas distintas**:
+hacen que `sometimientoDesdeDistintasPosiciones(mati)` se satisfaga de **dos formas distintas**:
 
 | | `UnaPosicion` | `OtraPosicion` | `\=` |
 |---|---|---|---|
@@ -661,85 +661,96 @@ Son el **mismo par**, mirado en los dos órdenes. Prolog no tiene forma de saber
 
 ---
 
-## Paso 6: `findall/3` para colapsar el no determinismo
+## Paso 6: `distinct/2` para colapsar el no determinismo
 
 ### La duda razonable: "pero si yo no necesito la lista"
 
-Es la primera reacción al ver este código, y es una buena objeción:
+Es la primera reacción al ver este problema, y es una buena objeción:
 
-> *"A mí no me importa **cuáles** son los sometimientos repetidos. Sólo necesito saber si **existe alguno**. ¿No alcanza con consultar `sometimientoDesdeDistintasPosiciones(Luchador, _)` y ya?"*
+> *"A mí no me importa **cuáles** son los sometimientos repetidos. Sólo necesito saber si **existe alguno**. ¿No alcanza con consultar `sometimientoDesdeDistintasPosiciones(Luchador)` y ya?"*
 
-**Conceptualmente tenés razón: la lista no nos interesa.** El problema es otro, y es la idea más importante de este paso:
+**Conceptualmente tenés razón.** El problema es otro, y es la idea más importante de este paso:
 
 > 🎓 En Prolog un objetivo **no devuelve `true`**. Un objetivo **se satisface tantas veces como formas haya de demostrarlo**. No hay "verdadero o falso": hay "cuántos caminos distintos llevan a que esto sea cierto".
 
-`sometimientoDesdeDistintasPosiciones(mati, _)` es cierto por **dos caminos** (el par de posiciones en los dos órdenes). No importa que a nosotros nos alcance con uno: Prolog los va a recorrer los dos, y cada uno hace que `esNavajaSuiza(mati)` tenga éxito. Por eso salen dos Mati.
+`sometimientoDesdeDistintasPosiciones(mati)` es cierto por **dos caminos** (el par de posiciones en los dos órdenes). No importa que a nosotros nos alcance con uno: Prolog los recorre los dos, y cada uno hace que `esNavajaSuiza(mati)` tenga éxito. Por eso salen dos Mati.
 
-Entonces lo que necesitamos no es *obtener* nada, sino **colapsar esos varios caminos en uno solo**. Y ahí es donde entra `findall/3`, por una propiedad suya que no tiene que ver con listas:
+Entonces lo que necesitamos no es *obtener* nada, sino **colapsar esos varios caminos en uno solo**.
 
-> **`findall/3` siempre se satisface exactamente una vez.**
-
-La lista es un **subproducto que descartamos**. Sólo la miramos para preguntar si quedó vacía o no. Podría decirse que usamos `findall` como "convertidor de muchas soluciones en una".
-
-### Cómo se lee `findall/3`
-
-Sus tres argumentos son:
-
-```prolog
-findall( Qué junto , De dónde lo saco , Dónde lo guardo )
-```
-
-Y lo importante para nosotros: **`findall` siempre tiene exactamente una solución**. Pase lo que pase adentro, `findall` se satisface una vez y deja una lista. Si el objetivo interno tenía 5 soluciones, no se propagan 5 caminos: se propaga **una** lista de 5 elementos.
-
-Entonces envolvemos la condición:
+### La solución: `distinct/2`
 
 ```prolog
 sabeUnSometimientoDesdeDistintasPosiciones(Luchador) :-
-	findall(Sometimiento,
-		sometimientoDesdeDistintasPosiciones(Luchador, Sometimiento),
-		Sometimientos),
-	Sometimientos \= [].
+	distinct(Luchador, sometimientoDesdeDistintasPosiciones(Luchador)).
 ```
 
-Traducido a castellano: *"junto en una lista todos los sometimientos que sabe desde más de una posición, y verifico que la lista no esté vacía"*.
-
-Para Mati, la lista que arma es:
+**Cómo se lee `distinct/2`**:
 
 ```prolog
-Sometimientos = [llaveDeBrazo, llaveDeBrazo]
+distinct( Testigo , Objetivo )
 ```
 
-**Ojo con esto, que es lo que más confunde**: la lista **sigue teniendo el elemento repetido**. `findall` no elimina duplicados. Lo que hace es **meter las dos soluciones adentro de una misma lista**, y entonces el predicado que la envuelve se satisface **una sola vez**. Los duplicados quedan "absorbidos" adentro de la lista, donde ya no molestan, porque lo único que preguntamos es si la lista está vacía o no.
+Deja pasar el objetivo **una sola vez por cada valor distinto del testigo**. Se acuerda de los testigos que ya dejó pasar y descarta las soluciones que repiten uno.
 
-Para Mora la lista queda `[]`, así que `Sometimientos \= []` falla, que es lo que queremos.
+Acá el testigo es `Luchador`, que **ya viene ligado** a un luchador concreto (lo ligó `esCinturonNegro/1`, el objetivo anterior). Entonces:
 
-Y ahora sí:
+1. Primer camino (espalda / montada) → testigo `mati` → **pasa**, y queda registrado.
+2. Segundo camino (montada / espalda) → testigo `mati` otra vez → **se descarta**.
+
+Resultado: un solo éxito.
 
 ```prolog
 ?- findall(L, esNavajaSuiza(L), Ls).
 Ls = [mati].    % ✅
 ```
 
-### Las otras formas de colapsarlo (todas probadas)
+Y si el luchador no tiene ningún sometimiento repetido —como Mora—, el objetivo de adentro **falla** y `distinct` no tiene nada que dejar pasar, así que el predicado falla. Que es lo que queremos.
 
-`findall` no es la única manera. Éstas son las cuatro alternativas, con lo que devuelve cada una:
+### ⚠️ El testigo tiene que ser el luchador
+
+Es el único detalle delicado. Para usar el sometimiento como testigo habría que devolverle el segundo argumento al predicado auxiliar:
+
+```prolog
+% ❌ frágil
+sometimientoDesdeDistintasPosiciones(Luchador, Sometimiento) :- ...
+
+distinct(Sometimiento, sometimientoDesdeDistintasPosiciones(Luchador, Sometimiento))
+```
+
+Andaría hoy —Mati repite un solo sometimiento, la llave de brazo— pero **volvería a duplicar** si alguien repitiera **dos** sometimientos distintos: `distinct` dejaría pasar uno por cada sometimiento distinto, o sea dos veces.
+
+Comprobado agregando un segundo sometimiento repetido a Mati: con testigo `Sometimiento` da 2 éxitos; con testigo `Luchador`, 1.
+
+> 🎓 **Criterio**: el testigo de `distinct` tiene que ser **aquello que no querés que se repita en la respuesta**. Como `esNavajaSuiza/1` devuelve luchadores, el testigo es el luchador.
+
+### Las otras formas de resolverlo (todas probadas)
 
 | | Cómo se escribe | Resultado | |
 |---|---|---|---|
-| **A** | `findall(S, sometimiento...(L, S), Ss), Ss \= []` | `[mati]` | ✅ **la que usamos** |
-| **B** | `sometimientoDesdeDistintasPosiciones(L, _)` (directo) | `[mati, mati]` | ❌ el bug |
-| **C** | `once(sometimientoDesdeDistintasPosiciones(L, _))` | `[mati]` | ⚠️ ver abajo |
-| **D** | cambiar `\=` por `@<` entre las posiciones | `[mati]` | ⚠️ frágil |
+| **A** | `distinct(Luchador, sometimiento...(Luchador))` | `[mati]` | ✅ **la que usamos** |
+| **B** | `sometimientoDesdeDistintasPosiciones(Luchador)` (directo) | `[mati, mati]` | ❌ el bug |
+| **C** | `findall(S, sometimiento...(L, S), Ss), Ss \= []` | `[mati]` | ✅ estándar ISO |
+| **D** | `setof(S, sometimiento...(L, S), _)` | `[mati]` | ✅ estándar ISO |
+| **E** | cambiar `\=` por `@<` entre las posiciones | `[mati]` | ⚠️ frágil |
 
-**C — `once/1`** es la que más se parece a la intuición: literalmente dice "con que se satisfaga una vez, alcanza". Es más corta y más directa que el `findall`. Su contra es que está implementada con **cut** (`!`), o sea que es **extra-lógica**: corta el backtracking por fuera de la lógica del predicado. Varias cátedras de paradigmas prefieren evitar el cut y sus derivados. **Si tu cátedra acepta `once/1`, es la opción más legible**; si no, queda el `findall`.
+**C — `findall/3`** era la versión anterior de este resumen. Junta en una lista todos los sometimientos repetidos y pregunta si la lista quedó vacía. Funciona porque **`findall` siempre se satisface exactamente una vez**, pase lo que pase adentro. La lista se descarta: sólo se mira si está vacía. Su ventaja es que `findall/3` es **estándar ISO** y ya se usa en el resto del TP; su desventaja, que hacen falta cuatro líneas y una variable (`Sometimiento`) como argumento del predicado auxiliar, sólo para que el `findall` tenga qué juntar.
 
-**D — `UnaPosicion @< OtraPosicion`** en lugar de `\=`. `@<` es el orden estándar entre términos, así que del par `espalda`/`montada` sólo acepta el orden alfabético y el par se cuenta una sola vez. Con estos datos anda, pero es **frágil**: si un luchador supiera el mismo sometimiento desde **tres** posiciones, saldrían 3 pares y volverían los duplicados. Sólo arregla el caso simétrico, no el problema general.
+**D — `setof/3`** es la más corta de las estándar: como `setof` **falla** cuando no hay soluciones (a diferencia de `findall`, que devuelve `[]`), se ahorra la línea del `\= []`.
 
-**Por qué elegimos A**: `findall/3` es completamente declarativo (sin cut), es una primitiva que ya usamos en el resto del TP, y funciona en todos los casos, no sólo en el del par simétrico.
+**E — `UnaPosicion @< OtraPosicion`** en lugar de `\=`. Del par `espalda`/`montada` acepta sólo el orden alfabético, así que lo cuenta una vez. Con estos datos anda, pero es **frágil**: si un luchador supiera el mismo sometimiento desde **tres** posiciones, saldrían 3 pares y volverían los duplicados (comprobado: `[mati, mati, mati]`). Sólo arregla el caso simétrico.
+
+### ⚠️ Lo que hay que saber defender de `distinct`
+
+`distinct/2` vive en `library(solution_sequences)`. SWI la carga sola, así que no hace falta importar nada — pero:
+
+- **No es estándar ISO**: no existe en otros Prolog.
+- **Es extra-lógica**: por dentro usa una tabla mutable para acordarse de los testigos que ya devolvió. No es una relación, es un filtro con memoria.
+
+Si en el coloquio te preguntan por qué usaste algo no declarativo, la respuesta es que resuelve exactamente el problema (evitar soluciones repetidas) en una línea, y que la alternativa declarativa equivalente es el `findall` de la opción C, que hace lo mismo en cuatro líneas y obligando a que el auxiliar tenga un argumento de salida que después no se usa.
 
 ---
 
-## Paso 7: ¿hace falta un `findall` también en el cinturón?
+## Paso 7: ¿hace falta colapsar también el cinturón?
 
 Ésta es una pregunta que **hay que hacerse cada vez**, y la respuesta acá es **no**. Vale la pena entender por qué, porque saber cuándo *no* agregar maquinaria es tan importante como saber cuándo agregarla.
 
@@ -762,18 +773,18 @@ Comparalo con el Paso 5, donde el problema era **real y comprobable**: ahí sí 
 
 **¿Cuándo se rompería?** Sólo si un luchador tuviera **dos cinturones negros a la vez** — por ejemplo negro en Sambo *y* violeta en Jiu Jitsu (que vale como negro en Judo). En ese caso `cinturon(L, _, negro)` daría dos soluciones y el luchador saldría repetido. Comprobado agregando ese dato a la base: da `[mati, mati]`.
 
-**La decisión**: la base del TP está dada y fija, y **ningún luchador tiene dos cinturones negros**. Envolver la condición en un `findall` para cubrir un caso que no existe agrega ruido y hace el predicado menos legible sin ganar nada. Así que se deja simple:
+**La decisión**: la base del TP está dada y fija, y **ningún luchador tiene dos cinturones negros**. Envolver la condición en un `distinct` para cubrir un caso que no existe agrega ruido y hace el predicado menos legible sin ganar nada. Así que se deja simple:
 
 ```prolog
 esCinturonNegro(Luchador) :-
 	cinturon(Luchador, _, negro).
 ```
 
-> 🎓 **Criterio**: agregá `findall` para colapsar no determinismo **cuando el no determinismo existe de verdad con los datos que tenés**, no por las dudas. En el sometimiento existe (Paso 5, comprobado). Acá no.
+> 🎓 **Criterio**: colapsá el no determinismo **cuando existe de verdad con los datos que tenés**, no por las dudas. En el sometimiento existe (Paso 5, comprobado). Acá no.
 
 **Diferencia entre los dos casos, en una línea:**
 
-| | ¿Duplica con los datos del TP? | ¿Necesita `findall`? |
+| | ¿Duplica con los datos del TP? | ¿Necesita `distinct`? |
 |---|---|---|
 | Sometimiento desde distintas posiciones | **Sí**, `[mati, mati]` | ✅ sí |
 | Cinturón negro | No, `[mati]` | ❌ no |
@@ -834,18 +845,15 @@ esCinturonNegro(Luchador) :-
 
 % Los sometimientos son las técnicas de piso: la variable Sometimiento
 % repetida obliga a que sea el mismo, y el \= a que las posiciones difieran.
-sometimientoDesdeDistintasPosiciones(Luchador, Sometimiento) :-
+sometimientoDesdeDistintasPosiciones(Luchador) :-
 	sabe(Luchador, piso(Sometimiento, UnaPosicion)),
 	sabe(Luchador, piso(Sometimiento, OtraPosicion)),
 	UnaPosicion \= OtraPosicion.
 
-% El findall colapsa las múltiples soluciones (los pares de posiciones
-% en los dos órdenes) en una sola.
+% distinct/2 deja pasar el objetivo una sola vez por cada valor distinto del
+% testigo. Como el testigo es el luchador, no se repiten soluciones.
 sabeUnSometimientoDesdeDistintasPosiciones(Luchador) :-
-	findall(Sometimiento,
-		sometimientoDesdeDistintasPosiciones(Luchador, Sometimiento),
-		Sometimientos),
-	Sometimientos \= [].
+	distinct(Luchador, sometimientoDesdeDistintasPosiciones(Luchador)).
 
 sabeAlgunGolpe(Luchador) :-
 	sabe(Luchador, golpe(_, _)).
@@ -866,7 +874,7 @@ El **generador** es `esCinturonNegro/1`, o sea `cinturon(Quien, _, negro)`. Como
 **1) `Quien = mati`** — por la 1ª cláusula: `cinturonObtenido(mati, sambo, negro)` ✅
 
 - `sabeUnSometimiento...(mati)`:
-  el `findall` junta `Sometimientos = [llaveDeBrazo, llaveDeBrazo]` (dos veces, por los dos órdenes del par de posiciones) → no está vacía ✅
+  el objetivo de adentro tiene éxito dos veces (los dos órdenes del par de posiciones), pero `distinct` deja pasar sólo el primero, porque el testigo `mati` ya quedó registrado ✅
 - `not(sabeAlgunGolpe(mati))`:
   Mati no tiene ningún término `golpe/2`, así que el objetivo interno **falla** → el `not` **da verdadero** ✅
 - `not(entrenaAlgunaDisciplinaDeParado(mati))`:
@@ -876,7 +884,7 @@ El **generador** es `esCinturonNegro/1`, o sea `cinturon(Quien, _, negro)`. Como
 **2) `Quien = mora`** — por la 2ª cláusula: `cinturonObtenido(mora, jiuJitsu, violeta)`, que le da el negro de Judo por equivalencia ✅
 
 - `sabeUnSometimiento...(mora)`:
-  el `findall` intenta con `triangulo` (sólo desde `guardia`) y con `armlock` (sólo desde `montada`); en los dos casos `UnaPosicion` y `OtraPosicion` toman el mismo valor y el `\=` falla → `Sometimientos = []` ❌
+  se intenta con `triangulo` (sólo desde `guardia`) y con `armlock` (sólo desde `montada`); en los dos casos `UnaPosicion` y `OtraPosicion` toman el mismo valor y el `\=` falla, así que `distinct` no tiene nada que dejar pasar ❌
 - **Falla acá.** Ni siquiera se evalúan las condiciones negativas (que Mora también incumpliría: sabe golpes y entrena Muay Thai).
 
 **Resultado**: `Quien = mati`, una sola vez.
@@ -903,17 +911,17 @@ El **generador** es `esCinturonNegro/1`, o sea `cinturon(Quien, _, negro)`. Como
 **"¿Por qué usaste `cinturon/3` y no `cinturonObtenido/3`?"**
 Porque la consigna establece que el violeta de Jiu Jitsu equivale al negro de Judo, y `cinturon/3` es el predicado que contempla esa equivalencia. `cinturonObtenido/3` tiene sólo los cinturones literalmente otorgados. El ejemplo de Mora en el enunciado está puesto justamente para verificar esto.
 
-**"¿Por qué el `findall` si igual te daba bien el resultado?"**
-En modo chequeo daba bien, pero en modo inversible `findall(L, esNavajaSuiza(L), Ls)` devolvía `[mati, mati]`: la condición del sometimiento se satisface dos veces, una por cada orden del par de posiciones. Un predicado inversible no debe devolver soluciones repetidas. `findall` siempre tiene una sola solución, así que colapsa ese no determinismo.
+**"¿Por qué el `distinct` si igual te daba bien el resultado?"**
+En modo chequeo daba bien, pero en modo inversible `findall(L, esNavajaSuiza(L), Ls)` devolvía `[mati, mati]`: la condición del sometimiento se satisface dos veces, una por cada orden del par de posiciones. Un predicado inversible no debe devolver soluciones repetidas. `distinct/2` deja pasar una sola solución por cada valor distinto del testigo, y así colapsa ese no determinismo.
 
 **"Si no necesitás la lista, ¿por qué no consultás el predicado directamente?"**
-Porque en Prolog un objetivo no devuelve `true`: se satisface **tantas veces como formas haya de demostrarlo**. `sometimientoDesdeDistintasPosiciones(mati, _)` es cierto por dos caminos (el par de posiciones en los dos órdenes), y cada camino hace que `esNavajaSuiza(mati)` tenga éxito. Uso `findall/3` no para obtener la lista —que descarto— sino porque **siempre se satisface exactamente una vez**, y así colapsa esos dos caminos en uno.
+Porque en Prolog un objetivo no devuelve `true`: se satisface **tantas veces como formas haya de demostrarlo**. `sometimientoDesdeDistintasPosiciones(mati)` es cierto por dos caminos (el par de posiciones en los dos órdenes), y cada camino hace que `esNavajaSuiza(mati)` tenga éxito. `distinct/2` deja pasar el primero y descarta el segundo, porque los dos tienen el mismo testigo.
 
-**"¿El `findall` no elimina los duplicados de la lista?"**
-No, la lista queda `[llaveDeBrazo, llaveDeBrazo]`. Lo que hace es meter las dos soluciones **adentro de una misma lista** en vez de propagarlas como dos caminos distintos. Como lo único que consulto es si la lista está vacía, los duplicados no molestan.
+**"¿Por qué el testigo del `distinct` es el luchador y no el sometimiento?"**
+Porque el testigo tiene que ser aquello que no quiero que se repita en la respuesta, y `esNavajaSuiza/1` devuelve luchadores. Con el sometimiento como testigo andaría hoy, pero volvería a duplicar si alguien repitiera dos sometimientos distintos.
 
-**"¿Y por qué no usaste `findall` también en `esCinturonNegro/1`?"**
-Porque ahí el no determinismo **no existe con estos datos**: ningún luchador tiene dos cinturones negros, así que `cinturon(L, _, negro)` da una sola solución por luchador y la consulta inversible devuelve `[mati]`. Sólo se rompería si alguien tuviera, por ejemplo, negro en Sambo *y* violeta en Jiu Jitsu. Agregar la maquinaria por las dudas haría el predicado menos legible sin arreglar nada. El criterio es: `findall` cuando el problema es real y comprobable, no preventivo. (SWI igual avisa "succeeded with choicepoint", pero un choicepoint **no es** una solución repetida.)
+**"¿Y por qué no usaste `distinct` también en `esCinturonNegro/1`?"**
+Porque ahí el no determinismo **no existe con estos datos**: ningún luchador tiene dos cinturones negros, así que `cinturon(L, _, negro)` da una sola solución por luchador y la consulta inversible devuelve `[mati]`. Sólo se rompería si alguien tuviera, por ejemplo, negro en Sambo *y* violeta en Jiu Jitsu. Agregar la maquinaria por las dudas haría el predicado menos legible sin arreglar nada. El criterio es: colapsar cuando el problema es real y comprobable, no preventivo. (SWI igual avisa "succeeded with choicepoint", pero un choicepoint **no es** una solución repetida.)
 
 **"¿Qué pasa si movés los `not` al principio?"**
 El predicado falla siempre, para todos. Con la variable sin ligar, `not(sabeAlgunGolpe(Luchador))` pregunta si **nadie** sabe golpes; como alguien sabe, da falso. `not/1` necesita las variables ligadas: es filtro, no generador.
@@ -924,8 +932,8 @@ Con el patrón generador + condiciones. El primer objetivo, `esCinturonNegro/1`,
 **"¿Qué es un sometimiento en tu modelo?"**
 Una técnica de piso, o sea un término `piso(Nombre, Posicion)`: las que se identifican por la posición desde la que se ejecutan, que es justamente lo que la condición necesita comparar.
 
-**"¿Por qué `sometimientoDesdeDistintasPosiciones/2` tiene dos argumentos si sólo lo usás para preguntar si existe?"**
-Porque el segundo argumento es lo que el `findall` junta. Además, como relación tiene sentido por sí sola: relaciona a un luchador con cada sometimiento suyo que sepa desde más de una posición.
+**"¿`distinct` no es estándar, no?"**
+No, vive en `library(solution_sequences)` de SWI y es extra-lógica: por dentro usa una tabla mutable para acordarse de los testigos que ya dejó pasar. La alternativa declarativa y estándar es `findall(S, sometimiento...(L, S), Ss), Ss \= []`, que hace lo mismo en cuatro líneas y obliga a que el auxiliar tenga un argumento de salida que después no se usa.
 
 **"¿Podrías haberlo escrito con `forall/2`?"**
 Sí, las condiciones negativas son equivalentes: `not(sabeAlgunGolpe(L))` es lo mismo que `forall(sabe(L, T), not(T = golpe(_, _)))`. Elegimos `not/1` sobre un auxiliar en positivo porque es más directo y porque el auxiliar queda reutilizable.
@@ -947,7 +955,7 @@ test(es_inversible_y_sin_repetidos) :-
 	Luchadores = [mati].
 ```
 
-El último es **el test más valioso del punto**: si sacaras el `findall` de `sabeUnSometimientoDesdeDistintasPosiciones/1`, ese test falla (daría `[mati, mati]`) mientras que `test(mati_es_navaja_suiza)` **seguiría pasando**. Testear en modo inversible es lo único que detecta las soluciones repetidas.
+El último es **el test más valioso del punto**: si sacaras el `distinct` de `sabeUnSometimientoDesdeDistintasPosiciones/1`, ese test falla (daría `[mati, mati]`) mientras que `test(mati_es_navaja_suiza)` **seguiría pasando**. Testear en modo inversible es lo único que detecta las soluciones repetidas.
 
 ---
 ---
@@ -1164,7 +1172,7 @@ tieneUnPuntoFlojo(Luchador) :-
 
 Con los datos actuales no pasa, porque Mora y Tomi tienen **un solo** sometimiento flojo cada uno. Pero si alguien tuviera **dos**, aparecería dos veces: `sabe/2` se satisface una vez por cada sometimiento que cumpla.
 
-Es la misma situación que discutimos en `esCinturonNegro/1` (Paso 7 del punto 4): el no determinismo existe en la estructura pero no se manifiesta con estos datos. Si el grupo quiere blindarlo, es el `findall` del Paso 6.
+Es la misma situación que discutimos en `esCinturonNegro/1` (Paso 7 del punto 4): el no determinismo existe en la estructura pero no se manifiesta con estos datos. Si el grupo quiere blindarlo, es el `distinct` del Paso 6.
 
 > 🚩 **Decisión: NO lo corregimos.** Es código de otro integrante y con los datos del TP no falla. Además, siguiendo el criterio del Paso 7 del punto 4, no corresponde agregar maquinaria por un no determinismo que hoy no se manifiesta.
 
@@ -1314,9 +1322,9 @@ esTemible(Luchador) :-
 	forall(sabe(Luchador, Tecnica), esContundente(Tecnica)).
 ```
 
-⚠️ Pero ojo: agregar ese `sabe(Luchador, _)` **reintroduce las soluciones repetidas** (Mati 6 veces). Habría que envolverlo, por ejemplo con `findall`, igual que en el punto 4. **La versión con verdad vacua es más simple justamente porque no necesita nada de eso.**
+⚠️ Pero ojo: agregar ese `sabe(Luchador, _)` **reintroduce las soluciones repetidas** (Mati 6 veces). Habría que envolverlo con `distinct`, igual que en el punto 4. **La versión con verdad vacua es más simple justamente porque no necesita nada de eso.**
 
-## 5. Por qué acá no hizo falta `findall` (a diferencia del punto 4)
+## 5. Por qué acá no hizo falta colapsar nada (a diferencia del punto 4)
 
 Es la comparación más útil entre los dos puntos individuales:
 
@@ -1324,10 +1332,10 @@ Es la comparación más útil entre los dos puntos individuales:
 |---|---|---|
 | Condición central | "existe **un** sometimiento repetido" | "**todas** las técnicas son contundentes" |
 | Cuantificador | existencial | universal |
-| Herramienta | `findall/3` + `\= []` | `forall/2` |
+| Herramienta | `distinct/2` | `forall/2` |
 | ¿Cuántas veces se satisface? | el objetivo crudo, **muchas** → hubo que colapsarlo | `forall/2` ya se satisface **a lo sumo una vez** |
 
-> 🎓 **La clave**: `forall/2` **ya es determinístico**. No propaga un camino por cada caso que revisa: los revisa todos internamente y se satisface una sola vez (o falla). Por eso no necesita ningún `findall` que lo envuelva. El `findall` del punto 4 hizo falta porque ahí la condición era **existencial** y estaba escrita como un objetivo crudo, que sí se satisface una vez por cada demostración.
+> 🎓 **La clave**: `forall/2` **ya es determinístico**. No propaga un camino por cada caso que revisa: los revisa todos internamente y se satisface una sola vez (o falla). Por eso no necesita ningún envoltorio. El `distinct` del punto 4 hizo falta porque ahí la condición era **existencial** y estaba escrita como un objetivo crudo, que sí se satisface una vez por cada demostración.
 
 **Regla práctica**: si la condición es "todos", usás `forall/2` y no tenés problema de duplicados. Si es "existe alguno", el objetivo crudo puede duplicar y hay que fijarse.
 
@@ -1353,10 +1361,10 @@ Porque `sabe(L, T), esContundente(T)` dice "sabe **alguna** técnica contundente
 Por dos motivos. Primero, `sabe/2` genera pares luchador-técnica, así que Mati saldría 6 veces y Facu 3. Segundo, se perdería a Fede, que no aparece en ningún hecho de `sabe/2`. `luchador/1` propone cada luchador exactamente una vez y a todos.
 
 **"¿Fede es temible? ¿No es raro?"**
-Sí es temible, por **verdad vacua**: `forall/2` con la condición vacía da verdadero, y Fede no tiene ninguna técnica que incumpla. Es la lectura literal del enunciado, y además es consistente con el punto 2, donde el mismo `forall/2` hace que Fede sea fiel a su disciplina. Si se quisiera excluirlo habría que exigir explícitamente que sepa al menos una técnica — pero eso reintroduce soluciones repetidas y obliga a envolverlo en un `findall`.
+Sí es temible, por **verdad vacua**: `forall/2` con la condición vacía da verdadero, y Fede no tiene ninguna técnica que incumpla. Es la lectura literal del enunciado, y además es consistente con el punto 2, donde el mismo `forall/2` hace que Fede sea fiel a su disciplina. Si se quisiera excluirlo habría que exigir explícitamente que sepa al menos una técnica — pero eso reintroduce soluciones repetidas y obliga a envolverlo en un `distinct`.
 
-**"¿Por qué acá no usaste `findall` como en el punto 4?"**
-Porque `forall/2` ya es determinístico: revisa todos los casos internamente y se satisface a lo sumo una vez. El `findall` del punto 4 hizo falta porque ahí la condición era existencial y estaba escrita como un objetivo crudo, que se satisface una vez por cada demostración.
+**"¿Por qué acá no usaste `distinct` como en el punto 4?"**
+Porque `forall/2` ya es determinístico: revisa todos los casos internamente y se satisface a lo sumo una vez. El `distinct` del punto 4 hizo falta porque ahí la condición era existencial y estaba escrita como un objetivo crudo, que se satisface una vez por cada demostración.
 
 **"¿Qué pasa si `esContundente/1` recibe una técnica sin ligar?"**
 No pasa, porque `forall/2` la liga: la condición `sabe(Luchador, Tecnica)` se evalúa primero y le da un valor concreto a `Tecnica` antes de llamar a `esContundente/1`. Es el mismo patrón generador + condición de siempre, pero adentro del `forall`.
@@ -1467,10 +1475,10 @@ findall(Tecnica, sabe(Luchador, Tecnica), Tecnicas),
 
 Acá **sí necesitamos la lista de verdad**, no la usamos para colapsar nada. `subconjunto/2` trabaja sobre una **lista**, y `sabe/2` entrega las técnicas de a una por backtracking. El `findall` es el puente entre las dos formas de tener la información.
 
-| Punto | Para qué se usó `findall` |
-|---|---|
-| 4 — `esNavajaSuiza` | para **colapsar** muchas soluciones en una (la lista se descarta) |
-| 9 — `comboPosible` | para **obtener** la lista, que es el dato que necesita la recursión |
+| Punto | Herramienta | Para qué |
+|---|---|---|
+| 4 — `esNavajaSuiza` | `distinct/2` | **colapsar** muchas soluciones en una; no se obtiene ningún dato |
+| 9 — `comboPosible` | `findall/3` | **obtener** la lista, que es el dato que necesita la recursión |
 
 ## 5. Inversibilidad
 
@@ -1507,8 +1515,8 @@ Por los números del enunciado. Facu sabe 3 técnicas y tiene 7 combos de hasta 
 **"Explicá `subconjunto/2`."**
 Por cada elemento hay dos caminos: entra al combo o no entra. Son las dos cláusulas recursivas. El caso base es lista vacía → combo vacío. Como los dos caminos son excluyentes y se respeta el orden original, cada subconjunto se genera exactamente una vez, y en total salen 2ⁿ.
 
-**"¿Por qué el `findall` acá, si en el punto 4 dijiste que la lista se descartaba?"**
-Son usos distintos. En el punto 4 el `findall` servía para colapsar muchas soluciones en una y la lista era un subproducto. Acá la lista **es** lo que necesito, porque `subconjunto/2` recorre una lista y `sabe/2` entrega las técnicas de a una por backtracking.
+**"¿Por qué el `findall` acá, si en el punto 4 usaste `distinct`?"**
+Porque resuelven problemas distintos. En el punto 4 no necesitaba ningún dato: sólo evitar que un luchador saliera repetido, y para eso `distinct/2` es directo. Acá la lista **es** lo que necesito, porque `subconjunto/2` recorre una lista y `sabe/2` entrega las técnicas de a una por backtracking.
 
 **"¿Por qué no es inversible para la cantidad máxima?"**
 Porque `Cantidad =< CantidadMaxima` es aritmética y exige los dos lados ligados. La consigna sólo pide inversibilidad para el luchador y el combo, así que no hace falta.
@@ -1571,7 +1579,7 @@ Es **la** decisión que se repite en casi todos los puntos. Traducir mal el "tod
 | "**todas** las X cumplen" | `forall(Condicion, Cumple)` | `esTemible`, `esCertero`, `esFielASuDisciplina` |
 | "**existe** alguna X" | objetivo común | `tieneUnPuntoFlojo`, `esCinturonNegro` |
 | "**ninguna** X" | `not(existeAlguna)` | `esNavajaSuiza`, `esPicante` |
-| "existe alguna" *y no quiero repetidos* | `findall(...), Lista \= []` | `sabeUnSometimientoDesdeDistintasPosiciones` |
+| "existe alguna" *y no quiero repetidos* | `distinct(Testigo, Objetivo)` | `sabeUnSometimientoDesdeDistintasPosiciones` |
 
 **Regla de oro**: "ninguno" **no se escribe directo**. Se define el predicado en positivo ("existe alguno") y se lo niega desde afuera.
 
@@ -1581,7 +1589,7 @@ Un objetivo **no devuelve `true`**: se satisface **una vez por cada forma de dem
 
 | Predicado | ¿Repite? | Por qué |
 |---|---|---|
-| `esNavajaSuiza` | no (arreglado) | el par de posiciones unificaba en los dos órdenes → `findall` |
+| `esNavajaSuiza` | no (arreglado) | el par de posiciones unificaba en los dos órdenes → `distinct` |
 | `esPicante` | **sí** ⚠️ | Facu entrena 3 disciplinas de parado → 3 caminos |
 | `tieneUnPuntoFlojo` | no, por suerte | nadie tiene 2 sometimientos flojos… todavía |
 
@@ -1593,9 +1601,9 @@ test(sin_repetidos) :-
 	Ls = [loEsperado].
 ```
 
-**Cómo se arregla**: `findall/3` colapsa muchas soluciones en una, porque **siempre se satisface exactamente una vez**. La lista suele descartarse — se usa sólo para preguntar si quedó vacía.
+**Cómo se arregla**: `distinct(Testigo, Objetivo)` deja pasar el objetivo una sola vez por cada valor distinto del testigo. La alternativa estándar es `findall/3`, que colapsa muchas soluciones en una porque **siempre se satisface exactamente una vez** (la lista se descarta, se usa sólo para preguntar si quedó vacía).
 
-**Cuándo NO arreglarlo**: si el no determinismo no existe con los datos reales (caso `esCinturonNegro`), agregar el `findall` es ruido. Un *choicepoint* **no es** una solución repetida.
+**Cuándo NO arreglarlo**: si el no determinismo no existe con los datos reales (caso `esCinturonNegro`), agregar el envoltorio es ruido. Un *choicepoint* **no es** una solución repetida.
 
 ## 3. Inversibilidad = generador + condiciones
 
