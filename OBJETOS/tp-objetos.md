@@ -482,6 +482,75 @@ La clase 24 (punto 5.4) advierte: **no subclasificar por cosas temporales** (jov
 
 > 🔗 **Comparación con Isabella**: Isabella tiene un **valor** distinto (60%) → instancia. Los fiesteros tienen un **comportamiento** distinto (`esDerrochon`) → subclase. Es la regla de la clase 24 aplicada dos veces en el mismo punto.
 
+### ¿Herencia o composición? Por qué hoy está bien que sea herencia
+
+La clase 24 (punto 5.2) compara las dos formas de reutilizar comportamiento:
+
+| | Herencia | Composición |
+|---|---|---|
+| Relación | entre **clases** (fija) | entre **instancias**: un objeto **conoce** a otro y le manda mensajes |
+| Idea | "**es un**" | "**tiene un**" |
+| ¿Se puede cambiar después? | **no**: una instancia no cambia de clase | **sí**: alcanza con cambiar la referencia |
+
+Para `Fiestero` elegimos herencia porque se cumplen las tres condiciones que la hacen la opción natural:
+
+1. **"Es un"**: un fiestero **es un** cliente, con todo lo que eso implica (ahorros, fiesta, contratar, servicios). No "tiene" un cliente adentro.
+2. **Es algo intrínseco, no temporal**: la consigna lo presenta como una característica de la persona ("Damián y Tomás, que son fiesteros", "Tomás es tan fiestero como Damián"). En ningún requerimiento un cliente empieza o deja de ser fiestero. Es lo que pide la buena práctica de la clase 24 (punto 5.4): que el objeto pertenezca a **una sola clase durante toda su vida**.
+3. **Cambia un solo comportamiento, y el resto se comparte entero**: `Fiestero` redefine `esDerrochon()` y hereda todo lo demás sin escribir nada. Con `super()` reutiliza hasta la parte de la regla que no cambia.
+
+Además, la entrega evalúa "clases y herencia", y el README pide justificar dónde la usaron.
+
+### ¿Cuándo pasaría a convenir composición?
+
+**Si ser fiestero pudiera cambiar durante la vida del cliente.** Por ejemplo, si la consigna dijera *"un cliente pasa a ser fiestero cuando contrata más de 5 servicios"* o *"Damián decide calmarse y deja de ser fiestero"*.
+
+Con herencia, eso **no se puede**: `damian` fue creado con `new Fiestero(...)` y va a ser un `Fiestero` para siempre. Es el mismo problema que la clase 24 (punto 5.4) muestra con el alumno que termina la cursada y pasa a ser ayudante: habría que crear un cliente nuevo y reemplazar todas las referencias al viejo (en los tests, en la agencia…), con el riesgo de perder sus servicios.
+
+Con composición, el cliente **tiene** un objeto que decide cómo se evalúa el derroche, y ese objeto se puede cambiar:
+
+```wollok
+object criterioComun {
+    method esDerrochon(cliente) = cliente.pagoAlgunServicioCaro()
+}
+
+object criterioFiestero {
+    method esDerrochon(cliente) = !cliente.fiesta().esLarga() && cliente.pagoAlgunServicioCaro()
+}
+
+class Cliente {
+    var criterioDerroche = criterioComun
+    ...
+    method criterioDerroche(nuevoCriterio) { criterioDerroche = nuevoCriterio }
+
+    method pagoAlgunServicioCaro() = !servicios.filter({ servicio => servicio.monto() > montoDerroche }).isEmpty()
+
+    method esDerrochon() = criterioDerroche.esDerrochon(self)
+}
+```
+
+```wollok
+damian.criterioDerroche(criterioComun)   // Damián deja de ser fiestero: es el mismo objeto, con sus servicios
+```
+
+Cómo funciona:
+
+- **Es polimorfismo entre dos wkos**: `criterioComun` y `criterioFiestero` entienden el mismo mensaje `esDerrochon(cliente)`, y el cliente no sabe cuál tiene. Es lo mismo que Isabella con sus caterings en la entrega 1.
+- **El cliente delega**: ya no decide él, se lo pregunta a su criterio pasándose a sí mismo (`self`).
+
+Lo que cuesta:
+
+| Costo | Por qué |
+|---|---|
+| Más objetos | Dos criterios para una sola regla que cambia. |
+| Un mensaje público extra | `pagoAlgunServicioCaro()` tiene que ser accesible para que los criterios puedan preguntarle al cliente. |
+| Se pierde `super()` | Cada criterio tiene que volver a pedir "pagó algo caro"; ya no hay una superclase de la que reutilizarlo. |
+
+**Conclusión**: la composición paga esos costos a cambio de **flexibilidad para cambiar en tiempo de ejecución**. Hoy la consigna no pide esa flexibilidad, así que sería complicar el modelo sin necesidad. Si la pidiera, convendría cambiar.
+
+> **Otras señales de que convendría composición** (la clase 24, punto 5.2):
+> - **Si hubiera más de un criterio para clasificar clientes.** Por ejemplo, fiestero/no fiestero **y además** VIP/común con otra regla. Con herencia simple hay un solo "tiro": no se puede heredar de `Fiestero` y de `ClienteVIP` a la vez, y habría que crear `FiesteroVIP`, `FiesteroComun`… Con composición, cada criterio es una referencia distinta.
+> - **Si solo quisiéramos reutilizar una parte**: la herencia trae **toda** la interfaz de la superclase. Es el ejemplo de la pila, que no conviene que **sea** una lista sino que **tenga** una.
+
 ---
 
 ## Paso 9: qué proveedores le trabajaron — igualdad e identidad
@@ -728,6 +797,15 @@ Hace que el method lookup **saltee** la clase donde está escrito (`Fiestero`) y
 **¿Por qué no `self.esDerrochon()` en lugar de `super()`?**
 Porque el lookup empezaría otra vez en `Fiestero` y se llamaría a sí mismo: loop infinito.
 
+**¿Podrías haber usado composición en vez de herencia para el fiestero?**
+Sí: el cliente podría tener un objeto "criterio de derroche" (común o fiestero) y delegarle la pregunta. Elegimos herencia porque un fiestero **es un** cliente, ser fiestero es algo **intrínseco** de la persona según la consigna, y cambia un solo comportamiento mientras el resto se comparte entero.
+
+**¿Y si Damián deja de ser fiestero?**
+Con herencia no se puede: una instancia no cambia de clase, habría que crear otro cliente y reemplazar todas las referencias. Si la consigna pidiera eso, convendría composición: cambiar el criterio del mismo cliente (`damian.criterioDerroche(criterioComun)`), sin perder sus servicios.
+
+**¿Hay composición en el TP?**
+Sí, en casi todo el modelo: el cliente **tiene** una fiesta y servicios, la fiesta **tiene** sectores, la agencia **tiene** proveedores, y Doña Rosa y Pizzas Nico **conocen** al barril. La herencia aparece solo donde algo **es un** caso particular de otra cosa.
+
 **¿Cómo hacés que un proveedor aparezca una sola vez?**
 Los agrego a un conjunto, que no admite repetidos. Como Silvina es el mismo objeto en los dos servicios, el conjunto la deja una vez.
 
@@ -912,6 +990,85 @@ class Salon inherits ProveedorPorSector {
 ```
 
 **Clase abstracta**: `ProveedorPorSector` nunca se instancia con `new`, y tiene métodos sin cuerpo. En Wollok no hace falta declararla abstracta.
+
+### ¿Qué es herencia y qué es composición?
+
+Las dos son formas de **reutilizar comportamiento** sin copiar código. La diferencia está en **entre quiénes** es la relación y en **cuándo** queda fija.
+
+#### Herencia: "es un"
+
+Una **clase** se define como un **caso particular** de otra. La subclase recibe **todos** los atributos y métodos de la superclase, y puede agregar los suyos o redefinir (`override`) los que cambian.
+
+```wollok
+class Cliente {
+    method contratar(proveedor) { ... }
+    method esDerrochon() = ...
+}
+
+class Fiestero inherits Cliente {       // un fiestero ES UN cliente
+    override method esDerrochon() = !fiesta.esLarga() && super()
+}
+```
+
+- La relación es **entre clases** y se escribe en el código (`inherits`). Queda **fija**: un objeto creado con `new Fiestero(...)` es un `Fiestero` para siempre.
+- Lo que no está en la subclase, el **method lookup** lo va a buscar a la superclase. Por eso `damian.contratar(...)` funciona sin haberlo escrito en `Fiestero`.
+- La subclase hereda la interfaz **completa**: si `Cliente` entiende un mensaje, `Fiestero` también, lo quiera o no.
+- Con **herencia simple** (como en Wollok) una clase hereda de **una sola** superclase: hay que elegir un único punto de vista para la jerarquía.
+
+#### Composición: "tiene un"
+
+Un **objeto** guarda una **referencia** a otro objeto y le **delega** parte del trabajo mandándole mensajes. No hay ninguna relación entre las clases: es una relación **entre instancias**.
+
+```wollok
+class Cliente {
+    const fiesta                       // un cliente TIENE UNA fiesta
+    method puedeContratar(proveedor) = proveedor.cuantoCobra(fiesta) <= self.presupuestoMaximo()
+}
+
+object doniaRosa {                     // Doña Rosa CONOCE al barril y le pide el costo
+    method cuantoCobraTotal(cantidadInvitados) = barril.costoPara(cantidadInvitados) + ...
+}
+```
+
+- La relación es **entre objetos**, a través de un atributo. Si el atributo es `var`, se puede **cambiar en cualquier momento**: el mismo objeto pasa a delegar en otro.
+- El objeto que compone decide **qué mostrar**: solo expone los mensajes que quiere, no toda la interfaz del objeto que conoce.
+- Se puede tener **varias** referencias a la vez, cada una con un objeto distinto, sin el límite de "un solo padre".
+
+#### La diferencia, de un vistazo
+
+| | Herencia | Composición |
+|---|---|---|
+| Frase que la describe | "un fiestero **es un** cliente" | "un cliente **tiene una** fiesta" |
+| Entre quiénes | **clases** | **objetos** (instancias) |
+| Cómo se escribe | `class B inherits A` | un atributo que apunta a otro objeto |
+| Cómo se reutiliza | el lookup sube a la superclase | el objeto le manda un mensaje a otro |
+| ¿Se puede cambiar después? | **no**, un objeto no cambia de clase | **sí**, cambiando la referencia |
+| Interfaz | se hereda **toda** | se expone **solo lo que se quiere** |
+| Cuántos | **una** superclase (herencia simple) | **todas** las referencias que hagan falta |
+| Ventaja | muy poco código: se redefine solo lo distinto, y `super` reutiliza el resto | flexibilidad, encapsulamiento |
+| Costo | rigidez: se "gasta" el único tiro de la herencia | más objetos y más mensajes entre ellos |
+
+#### El ejemplo de la clase: la pila
+
+¿Una pila **es una** lista o **tiene una** lista? (clase 24, punto 5.2)
+
+- Si **hereda** de `Lista`, entiende **todos** los mensajes de una lista: se le podría pedir el tercer elemento o sacar uno del medio, cosas que una pila no debería permitir.
+- Si **tiene** una lista, la usa por dentro y solo muestra `push()`, `top()` y `pop()`. La implementación queda **encapsulada**, y queda libre la herencia por si a futuro hace falta.
+
+Por eso la pila va con composición: no **es** una lista, solo **usa** una.
+
+### Herencia vs. composición en el TP
+
+| Relación | Tipo | Por qué |
+|---|---|---|
+| `Fiestero` → `Cliente` | **herencia** ("es un") | intrínseco, cambia un solo comportamiento |
+| Proveedores por sector → `ProveedorPorSector` | **herencia** ("es un") | un salón nunca se convierte en seguridad |
+| `Cliente` → `Fiesta`, `Servicio` | **composición** ("tiene un") | el cliente conoce su fiesta y sus servicios |
+| `Fiesta` → sectores | **composición** | la fiesta conoce sus sectores |
+| `agencia` → proveedores | **composición** | la agencia conoce a sus proveedores |
+| `doniaRosa`, `pizzasNico` → `barril` | **composición** | le piden el costo de la bebida |
+
+**Regla para decidir**: herencia si es **"es un"** y **no va a cambiar** durante la vida del objeto. Composición si es **"tiene un"**, o si **puede cambiar** (con herencia, una instancia no cambia de clase). Ver el ejemplo del fiestero con criterio de derroche en el [Paso 8](#paso-8-los-fiesteros--herencia).
 
 ## 3. Method lookup, la versión completa
 
