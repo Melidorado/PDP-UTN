@@ -315,6 +315,180 @@ object chichita inherits Ave {
 > [pepita, new Ave(), tweety, chichita].forEach({ ave => ave.volar(5) })
 ```
 
+### 7. Ejemplo de clase: pesistas (herencia vs. composición)
+
+Ejemplo subido para la clase. Un pesista tiene un **imm** (índice de masa muscular) que sube al entrenar fierros y baja al hacer cardio. Hay tres disciplinas que entrenan distinto:
+
+| Disciplina                    | Fierros                                       | Cardio                 |
+| ----------------------------- | --------------------------------------------- | ---------------------- |
+| **CrossFit**                  | Normal: suma `horas / 24`                     | Normal: resta `km / 10` (mínimo 0) |
+| **Powerlifting**              | Multiplica las horas por 3 turnos diarios     | **No hace nada**       |
+| **Fisicoculturismo**          | Antes hace 1 km de cardio, y eleva las horas a su dosis de testosterona | Normal |
+
+Se resuelve de dos formas.
+
+#### 7.1 Con herencia: el pesista **es un** PowerLifter
+
+```wollok
+class Pesista {
+  var property imm // Índice de Masa muscular
+
+  method entrenaFierros(horas) {
+    imm += horas / 24
+  }
+
+  method entrenaCardio(kilometros) {
+    imm = (imm - kilometros / 10).max(0)
+  }
+}
+
+class CrossFitter inherits Pesista {}
+
+class PowerLifter inherits Pesista {
+  const turnosDiarios = 3
+
+  override method entrenaFierros(horas) {
+    super(horas * turnosDiarios)
+  }
+
+  override method entrenaCardio(kilometros) {}
+}
+
+class BodyBuilder inherits Pesista {
+  const dosisTestosterona = 2
+
+  override method entrenaFierros(horas) {
+    self.entrenaCardio(1)
+    super(horas ** dosisTestosterona)
+  }
+}
+
+object theKing inherits BodyBuilder(imm = 100, dosisTestosterona = 7) {
+  var property posesRealizadas = 0
+
+  override method entrenaFierros(horas) {
+    super(horas)
+    posesRealizadas += self.posesDelEntrenamiento()
+  }
+
+  method posesDelEntrenamiento() = 1.randomUpTo(10).truncate(0)
+}
+```
+
+- `CrossFitter` no redefine nada: entrena igual que un `Pesista`.
+- `PowerLifter` **redefine** los dos métodos. En `entrenaFierros` reutiliza el de `Pesista` con `super`, pasándole las horas multiplicadas. `entrenaCardio` queda **vacío** (no pierde masa).
+- `BodyBuilder` usa **`self`** para hacer cardio (lookup normal, empieza en `BodyBuilder` → no lo encuentra → `Pesista`) y **`super`** para entrenar fierros con las horas elevadas a la dosis.
+- `theKing` es un **wko que hereda de una clase pasándole valores**: `inherits BodyBuilder(imm = 100, dosisTestosterona = 7)` inicializa los atributos heredados.
+- **`super` encadenado**: `theKing.entrenaFierros(2)` → el de `theKing` llama a `super(2)` → el de `BodyBuilder` llama a `super(2 ** 7)` → el de `Pesista` suma `128 / 24` al imm.
+
+```wollok
+const juan = new PowerLifter(imm = 50)
+juan.entrenaFierros(2)   // PowerLifter → super(6) → Pesista: imm += 6 / 24
+```
+
+**El problema:** si Juan deja el powerlifting y se pasa a crossfit, **no se puede**: un objeto no cambia de clase (sección 5.4). La disciplina **no es intrínseca** al pesista, así que no es un buen criterio para subclasificar.
+
+#### 7.2 Con composición: el pesista **tiene una** disciplina
+
+Una sola clase `Pesista`. Lo que varía se mueve a **otro objeto**, al que el pesista le **delega**:
+
+```wollok
+class Pesista {
+  var property imm // Índice de Masa muscular
+  var property disciplina
+
+  method entrenaFierros(horas) {
+    disciplina.entrenaFierros(self, horas)
+  }
+
+  method entrenaCardio(kilometros) {
+    disciplina.entrenaCardio(self, kilometros)
+  }
+
+  method ganarMasaPorHoras(horas) {
+    imm += horas / 24
+  }
+
+  method perderMasaPorKilometros(kilometros) {
+    imm = (imm - kilometros / 10).max(0)
+  }
+}
+
+class Disciplina {
+  method entrenaFierros(pesista, horas) {
+    pesista.ganarMasaPorHoras(self.cantidadDeHoras(horas))
+  }
+
+  method entrenaCardio(pesista, kilometros) {
+    pesista.perderMasaPorKilometros(kilometros)
+  }
+
+  method cantidadDeHoras(horas)   // abstracto
+}
+
+object crossfit inherits Disciplina {
+  override method cantidadDeHoras(horas) = horas
+}
+
+object powerlifting inherits Disciplina {
+  var property turnosDiarios = 3 // Lo decide el gimnasio, igual para todos
+
+  override method cantidadDeHoras(horas) = horas * turnosDiarios
+  override method entrenaCardio(pesista, kilometros) {}
+}
+
+class Fisicoculturismo inherits Disciplina {
+  const dosisTestosterona = 2 // Cada fisicoculturista tiene la suya
+
+  override method entrenaFierros(pesista, horas) {
+    pesista.entrenaCardio(1)
+    super(pesista, horas)
+  }
+
+  override method cantidadDeHoras(horas) = horas ** dosisTestosterona
+}
+```
+
+Paso a paso:
+
+```wollok
+const juan = new Pesista(imm = 50, disciplina = powerlifting)
+juan.entrenaFierros(2)
+```
+
+1. `juan.entrenaFierros(2)` → el pesista no decide nada, **delega**: `disciplina.entrenaFierros(self, 2)`.
+2. `powerlifting` no redefine `entrenaFierros` → se usa el de `Disciplina`, que pide `self.cantidadDeHoras(2)` → powerlifting responde `2 * 3 = 6`.
+3. La disciplina le dice al pesista `ganarMasaPorHoras(6)` → recién ahí cambia el imm.
+
+**La ventaja:** cambiar de disciplina es sólo cambiar una referencia.
+
+```wollok
+juan.disciplina(crossfit)   // ahora entrena como crossfitter
+juan.disciplina(new Fisicoculturismo(dosisTestosterona = 7))
+```
+
+Detalles para notar:
+
+- El pesista se pasa a sí mismo (**`self`**) como parámetro, para que la disciplina sepa **a quién** modificar. El imm sigue **encapsulado** en el pesista: la disciplina no lo toca directo, le pide `ganarMasaPorHoras` / `perderMasaPorKilometros`.
+- **No es "herencia o composición"**: se usan las dos. Los pesistas se **componen** con una disciplina, y las disciplinas **heredan** de `Disciplina` para no repetir código.
+- `cantidadDeHoras(horas)` es un **método abstracto** (sección 5.3): `Disciplina` define el algoritmo general de `entrenaFierros` y cada disciplina completa sólo el paso que cambia.
+- **¿Por qué `crossfit` y `powerlifting` son wko y `Fisicoculturismo` es clase?** Por la regla de la sección 5.3:
+  - `turnosDiarios` es **igual para todos** → alcanza con un único objeto compartido.
+  - `dosisTestosterona` es **propia de cada uno** → hace falta una instancia por pesista.
+- En `Fisicoculturismo`, `pesista.entrenaCardio(1)` vuelve a pasar por el pesista, que delega en su disciplina (fisicoculturismo) → se usa el `entrenaCardio` heredado de `Disciplina`.
+
+#### 7.3 Comparación
+
+|                                 | Herencia                              | Composición                                    |
+| ------------------------------- | ------------------------------------- | ---------------------------------------------- |
+| ¿Dónde está lo que varía?       | En subclases de `Pesista`             | En objetos `Disciplina` aparte                 |
+| ¿Puede cambiar de disciplina?   | ❌ No, la clase es fija               | ✅ Sí: `pesista.disciplina(otra)`              |
+| ¿Quién modifica el imm?         | El propio pesista, directo            | La disciplina, pidiéndoselo al pesista         |
+| Clases de pesista               | 4 (`Pesista` + 3 subclases)           | 1                                              |
+| Relación                        | "es un" (entre clases, estática)      | "tiene un" (entre instancias, dinámica)        |
+
+> Si lo que distingue a los objetos **puede cambiar durante su vida**, conviene **composición**. Si es **intrínseco** y no va a cambiar, la herencia es una opción válida.
+
 ### Resumen del módulo 13
 
 Las clases se organizan **jerárquicamente**, de lo más general a lo más particular. La **herencia** permite **reutilizar** atributos y comportamiento y **redefinir** (`override`) en cada subclase lo que cambie. El **method lookup** empieza en la clase del receptor (o en el wko) y sube por las superclases hasta encontrar el método o fallar en `Object`. **`self`** envía un mensaje al propio objeto (lookup normal); **`super`** saltea la clase donde está escrito y arranca en su superclase.
