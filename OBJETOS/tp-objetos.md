@@ -301,7 +301,7 @@ class Cliente {
 | Atributo | `var` / `const` | Por qué |
 |---|---|---|
 | `ahorros` | `var` | Cambia al ahorrar y al contratar. **Sin valor por defecto**: cada cliente arranca con los suyos. |
-| `fiesta` | `const` | Un cliente organiza una fiesta y no la cambia. |
+| `fiesta` | `const` | Un cliente organiza una fiesta y no la cambia. **Sin getter**: nadie de afuera se la pide al cliente (clase 22, punto 7.5: no hace falta definir getters si no se necesitan desde afuera). |
 | `porcentajeDisponible` | `const`, vale 0.2 | El 20% habitual. Isabella lo pisa con 0.6. |
 | `montoDerroche` | `const`, vale 3000 | Para no tener un **número mágico** en `esDerrochon()`. |
 | `servicios` | `const`, vale `[]` | La **referencia** no cambia, siempre es la misma lista. Lo que cambia es su **contenido**. |
@@ -542,7 +542,7 @@ Lo que cuesta:
 | Costo | Por qué |
 |---|---|
 | Más objetos | Dos criterios para una sola regla que cambia. |
-| Un mensaje público extra | `pagoAlgunServicioCaro()` tiene que ser accesible para que los criterios puedan preguntarle al cliente. |
+| Mensajes públicos extra | `pagoAlgunServicioCaro()` y el getter `fiesta()` tienen que existir para que los criterios puedan preguntarle al cliente. Con herencia no hacen falta: `Fiestero` usa directo el atributo `fiesta` que hereda. |
 | Se pierde `super()` | Cada criterio tiene que volver a pedir "pagó algo caro"; ya no hay una superclase de la que reutilizarlo. |
 
 **Conclusión**: la composición paga esos costos a cambio de **flexibilidad para cambiar en tiempo de ejecución**. Hoy la consigna no pide esa flexibilidad, así que sería complicar el modelo sin necesidad. Si la pidiera, convendría cambiar.
@@ -589,7 +589,103 @@ Porque cada `contratar` hace un `new Servicio(...)`, que crea un objeto **nuevo*
 
 ### ¿Por qué no guardar un conjunto de proveedores aparte?
 
-Se podría tener `const proveedores = #{}` como atributo y hacer `proveedores.add(proveedor)` en `contratar`. Pero sería **guardar dos veces la misma información** (los proveedores ya están dentro de los servicios), y habría que mantener las dos colecciones sincronizadas. Es el mismo problema que la clase 21 marca con las relaciones bidireccionales. Calculándolo a partir de `servicios`, nunca se desincroniza.
+La idea de fondo: **es mejor calcular un dato a partir de lo que ya tenés que guardarlo dos veces**.
+
+#### Las dos opciones
+
+**Opción A (la que usamos): calcularlo cada vez.** El cliente guarda **solo** los servicios. Cuando le preguntás qué proveedores le trabajaron, recorre los servicios y los arma en ese momento:
+
+```wollok
+const servicios = []
+
+method contratar(proveedor) {
+    ...
+    servicios.add(new Servicio(proveedor = proveedor, monto = monto))
+}
+
+method proveedoresContratados() {
+    const proveedores = #{}
+    servicios.forEach({ servicio => proveedores.add(servicio.proveedor()) })
+    return proveedores
+}
+```
+
+**Opción B (la que descartamos): guardarlo aparte.** El cliente guarda **dos** colecciones y en cada contratación agrega en las dos:
+
+```wollok
+const servicios = []
+const proveedores = #{}          // ← segunda colección
+
+method contratar(proveedor) {
+    ...
+    servicios.add(new Servicio(proveedor = proveedor, monto = monto))
+    proveedores.add(proveedor)   // ← hay que acordarse de esto también
+}
+
+method proveedoresContratados() = proveedores
+```
+
+Las dos funcionan y hoy dan el mismo resultado.
+
+#### Por qué "guardar dos veces la misma información"
+
+En la opción B, después de que Milena contrata dos veces a Silvina y dos veces a Escudo:
+
+```
+servicios   = [Servicio(silvina, 250), Servicio(silvina, 250), Servicio(escudo, 220), Servicio(escudo, 220)]
+proveedores = #{silvina, escudo}
+```
+
+Que Silvina y Escudo le trabajaron **ya está** dentro de `servicios`: cada servicio sabe su proveedor. La colección `proveedores` repite algo que ya se sabía.
+
+#### El problema: "mantenerlas sincronizadas"
+
+Mientras las dos colecciones digan lo mismo, no pasa nada. El riesgo es que **algún día dejen de decir lo mismo**, y eso pasa cuando alguien toca una y se olvida de la otra.
+
+Por ejemplo, si una entrega 3 agregara **"cancelar un servicio"**:
+
+```wollok
+method cancelar(servicio) {
+    servicios.remove(servicio)
+    // ¿y proveedores? ¡me olvidé de sacarlo de acá!
+}
+```
+
+Si Milena cancela los dos servicios de Silvina:
+
+```
+servicios   = [Servicio(escudo, 220), Servicio(escudo, 220)]
+proveedores = #{silvina, escudo}     ← sigue diciendo que Silvina le trabajó
+```
+
+Ahora el cliente **se contradice**: según `servicios`, Silvina no le trabajó, y según `proveedores`, sí. Eso es lo que significa que las colecciones estén **desincronizadas**.
+
+Y no alcanza con sacarla de `proveedores` sin pensar: si hubiera cancelado **uno solo** de los dos servicios de Silvina, ella **sí** tendría que seguir. Mantener bien la segunda colección obliga a pensar cada caso.
+
+**Con la opción A esto no puede pasar.** Hay una sola fuente de verdad, `servicios`. Si se cancela un servicio, la próxima vez que se pregunte `proveedoresContratados()` se recalcula a partir de lo que hay, y siempre da bien. **No hay nada que olvidarse de actualizar.**
+
+#### La comparación con la clase 21
+
+En la clase 21 (módulo 2, punto 7) estaba Juan, que tiene a Firulais como mascota, y Firulais, que tiene a Juan como dueño:
+
+```wollok
+juan.mascota(firulais)
+firulais.duenio(juan)
+```
+
+La clase advierte que, si guardás la relación **en los dos lados**, tenés que mantenerlas **sincronizadas**. Si alguien cambia la mascota de Juan y no actualiza el dueño de Firulais, Juan dice "mi mascota es otra" y Firulais sigue diciendo "mi dueño es Juan". Es el mismo problema: **el mismo dato guardado en dos lugares**, que se puede contradecir.
+
+#### En resumen
+
+| | Opción A (calcular) | Opción B (guardar aparte) |
+|---|---|---|
+| Qué guarda el cliente | solo `servicios` | `servicios` **y** `proveedores` |
+| Al contratar | agrega en un lugar | agrega en **dos** lugares |
+| Riesgo | ninguno: siempre se calcula de lo que hay | que las dos digan cosas distintas si alguien se olvida de actualizar una |
+
+Lo mismo hicimos con el presupuesto: no lo guardamos, lo calculamos (`ahorros * porcentajeDisponible`). Si lo guardáramos, habría que acordarse de actualizarlo cada vez que cambian los ahorros (ver [Paso 3](#paso-3-el-presupuesto-y-la-pregunta)).
+
+> **En la defensa**: "No guardé los proveedores aparte porque ya están en los servicios. Si los guardara dos veces, tendría que mantener las dos colecciones de acuerdo, y si un día alguien modifica una y se olvida de la otra, el cliente se contradice. Calculándolos a partir de los servicios, siempre dan bien."
 
 > **¿Por qué no `servicios.map(...).asSet()`?** Hace lo mismo en una línea, pero `asSet` **no está en los resúmenes**. Lo reemplazamos por `#{}` + `forEach` + `add`, que sí están (clases 22 y 24).
 
@@ -606,8 +702,6 @@ class Cliente {
     const servicios = []
 
     method ahorros() = ahorros
-
-    method fiesta() = fiesta
 
     method ahorrar(monto) {
         ahorros = ahorros + monto
@@ -953,7 +1047,7 @@ Avisan si un cambio rompe algo que ya funcionaba, y dicen exactamente qué se es
 
 # Cierre — Conceptos transversales (para repasar el día antes)
 
-Todo el TP se apoya en un puñado de ideas que se repiten. Si entendés estas siete, podés defender cualquier punto.
+Todo el TP se apoya en un puñado de ideas que se repiten. Si entendés estas nueve, podés defender cualquier punto.
 
 ## 1. Clase, instancia, wko u objeto anónimo
 
@@ -1070,30 +1164,207 @@ Por eso la pila va con composición: no **es** una lista, solo **usa** una.
 
 **Regla para decidir**: herencia si es **"es un"** y **no va a cambiar** durante la vida del objeto. Composición si es **"tiene un"**, o si **puede cambiar** (con herencia, una instancia no cambia de clase). Ver el ejemplo del fiestero con criterio de derroche en el [Paso 8](#paso-8-los-fiesteros--herencia).
 
-## 3. Method lookup, la versión completa
+## 3. Polimorfismo: un mensaje, muchos objetos
 
-1. Se busca el método en el **wko** o en la **clase del receptor**.
-2. Si no está, se sube a la **superclase**, y así hasta `Object`.
-3. Si no está en ningún lado: `MessageNotUnderstoodException` ("does not understand").
+**Polimorfismo** es cuando **dos o más objetos distintos entienden el mismo mensaje**, cada uno a su manera, y quien les manda el mensaje **los puede tratar igual** sin saber cuál es cuál.
 
-| | ¿Dónde empieza a buscar? | Para qué |
+### La idea (clase 21, módulo 3)
+
+Hacen falta **tres** participantes:
+
+1. Un objeto que **envía** el mensaje (el que usa).
+2. Dos o más objetos que **entienden** ese mensaje, cada uno con **su propio método** (su propia forma de resolverlo).
+
+Esos objetos son **polimórficos para quien los usa**. El beneficio no es para ellos, sino para el que les habla: puede cambiar de objeto **sin cambiar el código** que manda el mensaje.
+
+La analogía de la clase es el botón **play**: un iPod, un DVD y una videocasetera entienden `play()`, cada uno hace algo distinto, y vos apretás play sin pensar en cómo funciona cada aparato.
+
+### En el TP
+
+```wollok
+method puedeContratar(proveedor) = proveedor.cuantoCobra(fiesta) <= self.presupuestoMaximo()
+```
+
+El cliente le manda `cuantoCobra(fiesta)` a lo que le llegue, y cada proveedor responde con **su** cuenta:
+
+| Proveedor | Qué hace al recibir `cuantoCobra(fiesta)` |
+|---|---|
+| `doniaRosa` | $20 × invitados + bebida |
+| `elBodegon` | $900 + $35 por cada invitado después de 25 |
+| `losTilos` (Salón) | $500 × sectores × horas |
+| `escudo` (Seguridad) | $100 × sectores, + 10% si es larga |
+
+El cliente **no sabe** cuál de ellos recibe y **no le importa**. El código no tiene ningún `if` del tipo "si es catering hacé tal cosa, si es salón hacé otra".
+
+**Mensaje ≠ método**: el mensaje es el **qué** ("¿cuánto cobrás?"), el método es el **cómo** (la cuenta de cada uno). Lo que conecta uno con otro es el [method lookup](#4-method-lookup-cómo-se-encuentra-el-método).
+
+### Lo que **no** hace falta para que haya polimorfismo
+
+- **No hace falta herencia.** `doniaRosa` es un wko que no hereda de nada, y `losTilos` es una instancia de `Salon`. Igual son polimórficos, porque los dos entienden `cuantoCobra(fiesta)`. En Wollok el criterio es **entender el mensaje**, no pertenecer a una clase (clase 21, punto 4; clase 23, punto 7).
+- **No hace falta que compartan toda la interfaz.** Alcanza con **el mensaje que usa** quien les habla. Doña Rosa entiende `cuantoCobraServicio(...)`, y Los Tilos no, pero al cliente no le importa porque nunca se lo pide.
+- **Es en un contexto.** Son polimórficos **para el cliente y la agencia**, en el contexto de "cuánto cobrás". Fuera de eso pueden no tener nada en común.
+
+### Todos los polimorfismos del TP
+
+| Mensaje | Lo entienden | Quién lo envía |
 |---|---|---|
-| `self.mensaje()` | En la clase del **receptor** | Mandarse un mensaje a sí mismo |
-| `super()` | En la **superclase** de la clase donde está escrito | Reutilizar el método que se redefinió |
+| `cuantoCobra(fiesta)` | 3 caterings (wko) + 7 proveedores por sector (instancias) | `Cliente` |
+| `invitadosSector()` | `SectorDeMesas`, `SectorDeGrupos` (y los wko `familia`, `facultad`) | `Fiesta`, en `cantidadInvitados()` |
+| `esDerrochon()` | `Cliente`, `Fiestero` | los tests |
+| `puedeContratar(proveedor)` | Isabella, Milena, Damián y Tomás | `agencia` |
+
+En la entrega 1 eran `cuantoCobraTotal(cantidadInvitados)` entre los tres caterings y `cantidadInvitados()` entre los dos sectores.
+
+### Ventajas (lo que van a preguntar)
+
+1. **Se pueden agregar objetos nuevos sin tocar al que los usa.** Si la agencia suma un fotógrafo, alcanza con que entienda `cuantoCobra(fiesta)`: ni el cliente ni la agencia cambian. Es la pregunta de la entrega 1, "¿qué habría que cambiarle a Isabella si aparece un cuarto catering?": **nada**.
+2. **El código del que usa queda simple:** no pregunta "¿qué sos?" antes de actuar.
+3. **Bajo acoplamiento:** el cliente no depende de cómo calcula cada proveedor. Si Matías cambia la cuenta del salón, el cliente no se entera.
+4. **División de tareas:** yo programé el `Cliente` y Matías los proveedores, en paralelo. Solo teníamos que ponernos de acuerdo en el nombre del mensaje. Por eso, cuando escribió `cantidadSectores()` y la fiesta entendía `cantidadDeSectores()`, se rompió: el polimorfismo depende de que **el nombre del mensaje sea exactamente el mismo**.
+5. **Facilita testear:** un objeto anónimo que entienda `cuantoCobra(fiesta)` puede reemplazar a un proveedor real en un test (clase 22, módulo 6, y clase 23, los stubs).
+
+> **En una frase**: "Polimorfismo es que distintos objetos entiendan el mismo mensaje, cada uno con su propio método, para que quien los usa pueda tratarlos igual sin saber cuál es. En el TP, el cliente le pregunta `cuantoCobra(fiesta)` a cualquier proveedor sin saber si es un catering o un salón."
+
+## 4. Method lookup: cómo se encuentra el método
+
+El **method lookup** es el mecanismo que usa Wollok para **encontrar qué método ejecutar** cuando un objeto recibe un mensaje. Es la búsqueda que conecta el **mensaje** (el qué) con el **método** (el cómo).
+
+Cuando escribís `isabella.contratar(escudo)`, el código no dice **qué** `contratar` ejecutar. Lo decide el lookup **en el momento de ejecutar**, buscando en el objeto que recibe el mensaje.
+
+### Cómo busca, según qué sea el receptor
+
+En la materia lo fueron ampliando de a poco.
+
+**1. Si el receptor es un wko (clase 21)**: busca el método **en el propio objeto**.
+
+```wollok
+doniaRosa.cuantoCobra(fiesta)
+```
+
+→ busca `cuantoCobra` en `doniaRosa` → lo encuentra → lo ejecuta.
+
+**2. Si el receptor es una instancia de una clase (clase 23)**: las instancias no tienen métodos propios, el comportamiento está en la **clase**. Entonces:
+
+- El **método** se busca en la **clase** del receptor.
+- Los **atributos** se resuelven en la **instancia**: se ejecuta con **su** estado.
+
+```wollok
+losTilos.cuantoCobra(fiestaIsabella)
+```
+
+→ `losTilos` es un `Salon` → busca en `Salon` → encuentra `cuantoCobra` → lo ejecuta con el `precioPorSector` **de Los Tilos** (500). Si fuera otro salón con precio 800, encontraría **el mismo método**, pero con **su** precio.
+
+**3. Si hay herencia (clase 24)**: si no lo encuentra en la clase, **sube** a la superclase, y así hasta llegar a `Object`, la madre de todas las clases.
+
+```wollok
+damian.contratar(losTilos)
+```
+
+1. `damian` es un `Fiestero` → busca `contratar` en `Fiestero` → **no está**.
+2. Sube a `Cliente` → **lo encuentra** → lo ejecuta con el estado **de Damián**.
+
+```wollok
+damian.esDerrochon()
+```
+
+1. Busca en `Fiestero` → **lo encuentra** (está redefinido con `override`) → ejecuta ese y **no sigue subiendo**.
+
+Por eso `override` funciona: el lookup encuentra primero el de la subclase.
+
+**4. Si no lo encuentra en ningún lado**: llega hasta `Object`, no lo encuentra y falla.
+
+```
+wollok.lang.MessageNotUnderstoodException: a Fiesta does not understand cantidadSectores()
+```
+
+Es el error que tuvimos al juntar el punto 2: los proveedores le mandaban `cantidadSectores()` a la fiesta, el lookup lo buscó en `Fiesta`, después en `Object`, y no estaba en ninguno.
+
+### `self` y `super`: desde dónde empieza a buscar
+
+Dentro de un método se le puede mandar un mensaje al propio objeto. La diferencia entre `self` y `super` es **dónde arranca la búsqueda**:
+
+| | Empieza a buscar en… | En el TP |
+|---|---|---|
+| `self.mensaje()` | la clase del **receptor**: lookup normal | `self.validarPresupuesto(proveedor)` en `contratar` |
+| `super()` | la **superclase de la clase donde está escrito** | `super()` en `Fiestero.esDerrochon()` |
 
 En los dos casos **el receptor es el mismo objeto**; solo cambia desde dónde se busca.
 
-## 4. Polimorfismo: un mensaje, muchos objetos
+**Ejemplo con `super`**: `tomas.esDerrochon()`
 
-| Mensaje | Lo entienden | Lo envía |
+1. Busca en `Fiestero` → lo encuentra → `!fiesta.esLarga()` da `true` (4 horas).
+2. `super()` → **saltea** `Fiestero` y busca `esDerrochon` en `Cliente` → lo encuentra → ¿pagó algo de más de $3.000? → sí.
+3. Resultado: es derrochón.
+
+**Por qué no `self.esDerrochon()` ahí**: el lookup empezaría otra vez en `Fiestero`, encontraría el mismo método y se llamaría a sí mismo para siempre: **loop infinito**.
+
+### Por qué importa: el lookup es lo que hace posible el polimorfismo
+
+```wollok
+method puedeContratar(proveedor) = proveedor.cuantoCobra(fiesta) <= self.presupuestoMaximo()
+```
+
+El mensaje es siempre el mismo, pero según qué llegue en `proveedor`, el lookup encuentra métodos distintos:
+
+| `proveedor` es… | El lookup busca en… | Encuentra |
 |---|---|---|
-| `cuantoCobra(fiesta)` | los 3 caterings (wko) + las 7 instancias de proveedores | `Cliente` (y a través de él, la agencia) |
-| `invitadosSector()` | `SectorDeMesas`, `SectorDeGrupos` (y los wko `familia`, `facultad`) | `Fiesta` |
-| `esDerrochon()` | `Cliente`, `Fiestero` | los tests |
+| `doniaRosa` | el wko `doniaRosa` | la cuenta de Doña Rosa |
+| `losTilos` | la clase `Salon` | la cuenta del salón |
+| `escudo` | la clase `Seguridad` | la cuenta de seguridad |
 
-**Polimorfismo no requiere herencia**: los caterings no heredan de nada y son polimórficos con los salones. Alcanza con **entender el mismo mensaje** (clase 23, módulo 8, punto 7).
+Si el método se decidiera al **escribir** el código y no al **ejecutarlo**, el cliente no podría tratar a todos igual.
 
-## 5. Colecciones (solo lo que está en los apuntes)
+### Resumen
+
+1. Se busca en el **wko**, o en la **clase** del receptor.
+2. Si no está, se **sube** por las superclases.
+3. Si llega a `Object` sin encontrarlo: **"does not understand"**.
+4. El método se busca en la clase, pero se ejecuta con el **estado de la instancia**.
+5. `self` busca desde la clase del receptor; `super` busca desde la superclase de donde está escrito.
+
+> **En una frase**: "El method lookup es cómo Wollok encuentra el método a ejecutar: lo busca en el objeto o en su clase, y si no está, sube por las superclases hasta `Object`. Por eso un fiestero sabe contratar sin haberlo escrito, y por eso el cliente puede mandarle `cuantoCobra` a cualquier proveedor."
+
+## 5. Colecciones: listas y conjuntos
+
+### Lista o conjunto (clase 22, punto 6.4)
+
+| | Lista `[]` | Conjunto `#{}` |
+|---|---|---|
+| Orden | sí | no |
+| Repetidos | **los admite** | **no los admite**: agregar uno que ya está no hace nada |
+| Modela | una secuencia, un registro de hechos | el conjunto matemático: "quiénes" |
+
+(En Wollok `[]` se llama **lista**, no array.)
+
+**La regla para elegir**: ¿tienen sentido los repetidos? Si cada aparición cuenta → lista. Si solo importa **quiénes** están → conjunto.
+
+### Por qué `servicios` es una lista
+
+Cada contratación es un **hecho distinto**, aunque se repita el proveedor y el monto. La consigna pide:
+
+> "Milena contrata dos veces a Silvina y dos veces a Escudo. Cuántos servicios tuvo" → **4**
+
+Si contrató cuatro veces, tienen que quedar cuatro registros. Y `totalGastado()` tiene que sumar los cuatro pagos: Milena le pagó dos veces a Silvina, así que gastó dos veces esa plata. Con una lista no hay riesgo de perder ninguno. Además, cada `contratar` crea un `new Servicio(...)`, un objeto nuevo y distinto de los anteriores.
+
+### Por qué los proveedores son conjuntos
+
+Hay dos lugares, y en los dos interesa **quiénes**, no cuántas veces:
+
+- **`proveedoresContratados()`** responde directamente la consigna: *"Si contrató dos veces al mismo, ese proveedor aparece **una sola vez**"*. El conjunto hace eso solo: al agregar `silvina` dos veces, queda una. Con una lista habría que sacar los repetidos a mano.
+- **La agencia**: un proveedor está representado o no lo está; no tiene sentido tenerlo dos veces. Si por error se incorpora dos veces a Escudo, el conjunto lo deja una sola vez y no aparece repetido en `proveedoresQuePuedePagar`.
+
+| | Colección | ¿Repetidos? | Pregunta que responde |
+|---|---|---|---|
+| `servicios` | lista `[]` | sí, cada contratación cuenta | ¿cuántas veces contrató? ¿cuánto pagó en total? |
+| `sectores` (de la fiesta) | lista `[]` | — | ¿qué sectores tiene? |
+| `proveedoresContratados()` | conjunto `#{}` | no | ¿quiénes le trabajaron? |
+| proveedores de la agencia | conjunto `#{}` | no | ¿a quiénes representa? |
+
+> **En la defensa**: "Elegí la colección según si los repetidos tienen sentido. En los servicios sí, porque cada contratación es un pago distinto. En los proveedores no, porque la consigna pide que cada uno aparezca una sola vez."
+
+El conjunto decide "repetido" usando `==`, que por defecto es identidad. Ver [igualdad e identidad](#9-igualdad-e-identidad).
+
+### Los mensajes que usamos (todos están en los apuntes)
 
 | Mensaje | Qué hace | Dónde lo usamos |
 |---|---|---|
@@ -1105,11 +1376,54 @@ En los dos casos **el receptor es el mismo objeto**; solo cambia desde dónde se
 | `isEmpty()` | ¿está vacía? | `esDerrochon` |
 | `forEach({ ... })` | hace algo con cada uno | `proveedoresContratados` |
 
-**Lista `[]`** (orden, admite repetidos): `servicios`, `sectores`. **Conjunto `#{}`** (sin repetidos): proveedores de la agencia, `proveedoresContratados`.
+`filter` y `map` **no modifican** la colección original: devuelven una nueva. Y `asSet()` / `any(...)` **no** los usamos porque no están en los resúmenes.
 
-`filter` y `map` **no modifican** la colección original: devuelven una nueva.
+## 6. Estado: `var`, `const`, `property` y cuándo poner getters y setters
 
-## 6. Excepciones
+### Las herramientas (clase 21, módulo 2)
+
+| | Qué es | ¿Se puede reasignar? |
+|---|---|---|
+| `var x` | referencia **variable** | sí |
+| `const x` | referencia **fija** | no (pero si apunta a una colección, el **contenido** sí puede cambiar) |
+| `var property x` | `var` + **getter** `x()` + **setter** `x(valor)` | sí, también desde afuera |
+| `const property x` | `const` + **getter** `x()` (sin setter) | no |
+
+- **Getter**: una **pregunta** que devuelve el valor del atributo, con el mismo nombre (`method ahorros() = ahorros`).
+- **Setter**: una **acción** que lo cambia desde afuera (`method ahorros(nuevo) { ahorros = nuevo }`).
+- `property` es solo un **atajo** para no escribirlos a mano.
+
+### Dar un valor al crear ≠ setter
+
+| | Cuándo | Cómo |
+|---|---|---|
+| **Inicializar** | **una vez**, en el `new` | `new Cliente(porcentajeDisponible = 0.6, ...)` |
+| **Setter** | **en cualquier momento**, después de creado | `isabella.porcentajeDisponible(0.6)` |
+
+Los parámetros con nombre del `new` **no son mensajes**: le dicen a Wollok con qué valores arrancan los atributos de esa instancia. Funcionan con `const` y con `var`, con o sin `property`. Lo vieron en clase: `new Ciudad(consumo = 60)` con `const consumo` (clase 23), `new Descuento(descuento = 5)` con `const descuento` (clase 24).
+
+**El valor por defecto** (`const porcentajeDisponible = 0.2`) se usa solo si al crear no se dice otro. Isabella no lo "pisa" después: **nace** con 0.6, y como es `const`, ya no cambia.
+
+### Por qué casi no usamos `property` en `Cliente`
+
+`property` sirve cuando hay que **leer o cambiar el atributo desde afuera, después de crear el objeto**. En `Cliente`:
+
+| Atributo | Declaración | Por qué |
+|---|---|---|
+| `ahorros` | `var` + **getter a mano**, sin setter | Lo leen los tests, pero solo cambia con `ahorrar` y `contratar`. Con `var property`, cualquiera podría hacer `isabella.ahorros(1000000)`. Es lo que corrigió el profe en la entrega 1. |
+| `porcentajeDisponible` | `const` con valor por defecto, sin getter | Fijo para cada cliente; se define al crearlo. Con `var property` se podría hacer `isabella.porcentajeDisponible(1)` y gastar el 100%. Nadie de afuera lo pregunta: se usa adentro, en `presupuestoMaximo()`. |
+| `fiesta` | `const` sin valor por defecto, sin getter | Cada cliente trae la suya al crearse. Nadie de afuera se la pide (el getter lo borramos por eso). |
+| `montoDerroche` | `const` con valor, sin getter | Solo para no tener un número mágico. |
+| `servicios` | `const` (la lista no se reemplaza; se le agregan elementos) | Se consulta con `cantidadServicios()`, `totalGastado()`, etc., no exponiendo la lista. |
+
+**La regla** (clase 21 y clase 22, punto 7.5): el estado lo modifica **el propio objeto** con sus métodos, y **no hace falta definir getters ni setters si no se necesitan desde afuera**. Por eso:
+
+- **Getter** solo si alguien de afuera necesita el valor (`ahorros()`, para los tests).
+- **Setter** casi nunca: en su lugar, una **acción con nombre del dominio** que hace la cuenta adentro (`ahorrar(monto)`, `contratar(proveedor)`).
+
+En `Servicio`, en cambio, sí usamos `const property`: el cliente necesita **leer** `monto()` y `proveedor()` desde afuera, y nunca cambian.
+
+## 7. Excepciones
 
 - **Se lanzan** con `self.error("mensaje")` cuando algo sale del flujo normal del negocio.
 - **No se atrapan** en el dominio: solo en los tests y en la interfaz de usuario.
@@ -1117,7 +1431,51 @@ En los dos casos **el receptor es el mismo objeto**; solo cambia desde dónde se
 - **Validar antes de modificar**: así, si falla, el estado queda como estaba.
 - **Lista vacía no es error**.
 
-## 7. Tests
+### `self.error(...)` o `throw new UserException(...)`
+
+La clase 22 (módulo 10, punto 6, "Cómo generar una excepción") muestra dos formas de lanzar una excepción:
+
+```wollok
+// 1. Enviando un mensaje que entiende todo objeto
+self.error("Pasó tal cosa")
+
+// 2. Instanciando una excepción (usando el concepto de clase)
+throw new UserException(message = "Pasó tal cosa")
+```
+
+**Usamos la primera.** `error(...)` es un mensaje que **entiende todo objeto**, así que el cliente se lo manda a sí mismo con `self`. Lanza una excepción con ese mensaje y **corta el método ahí**: lo que viene después (descontar, registrar) no se ejecuta.
+
+```wollok
+method validarPresupuesto(proveedor) {
+    if (!self.puedeContratar(proveedor)) {
+        self.error("El presupuesto no alcanza para contratar al proveedor")
+    }
+}
+```
+
+**Por qué esta y no `throw`:**
+
+| | `self.error("...")` | `throw new UserException(...)` |
+|---|---|---|
+| Qué hace falta | nada: todo objeto entiende `error` | primero definir la clase: `class UserException inherits Exception { }` |
+| Cómo se escribe | un mensaje más | `throw` + crear una instancia con `new` |
+| Qué se puede verificar en el test | el **mensaje** del error | el mensaje **y el tipo** de excepción |
+
+- **Es más simple**: no hay que crear ninguna clase de excepción.
+- **Alcanza para lo que pide la consigna**: el test usa `assert.throwsExceptionWithMessage(...)`, que verifica que se lance un error **con ese mensaje**. No hace falta saber de qué tipo es.
+
+**Cuándo convendría `throw new UserException(...)`**: si quisiéramos que el test verifique también el **tipo** de excepción, con `assert.throwsExceptionLike(new UserException(message = "..."), { ... })` (clase 23, módulo 11, punto 3: es la opción de "restricción máxima"). Por ejemplo, para distinguir un error de negocio de uno de programa. La consigna no lo pide.
+
+**Lo que rodea al `self.error` también sale de los apuntes:**
+
+- **La validación en su propio método** (`validarPresupuesto`), como `validarMontoPositivo` del monedero (clase 22, punto 6).
+- **Excepción por presupuesto insuficiente**: es literalmente el ejemplo del punto 10.1, "To throw or not to throw".
+- **Validar antes de modificar el estado**, para que si falla no cambie nada.
+- **Un mensaje claro** para quien lo lea (clase 22, punto 10): dice qué pasó, no un código.
+
+> **En la defensa**: "Usé `self.error`, que es un mensaje que entiende todo objeto y lanza una excepción con ese mensaje. Es más simple que `throw new UserException`, que requiere definir la clase de excepción, y alcanza porque el test verifica el mensaje con `throwsExceptionWithMessage`. Si quisiera verificar también el tipo, usaría `throw` con `throwsExceptionLike`."
+
+## 8. Tests
 
 | Herramienta | Para qué | En el TP |
 |---|---|---|
@@ -1132,7 +1490,7 @@ En los dos casos **el receptor es el mismo objeto**; solo cambia desde dónde se
 - **Un escenario por test**: el nombre describe la situación, no el número.
 - **Regresión**: correr todos los tests después de cada cambio para detectar lo que se rompió.
 
-## 8. Igualdad e identidad
+## 9. Igualdad e identidad
 
 - **`===`**: ¿el mismo objeto? Lo decide la máquina virtual, no se puede cambiar.
 - **`==`**: ¿representan lo mismo? Por defecto es identidad, pero se puede redefinir con `override method ==(otro)`.
