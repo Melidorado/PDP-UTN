@@ -197,19 +197,50 @@ Así, `cuantoCobra(fiesta)` es **el mensaje que entienden los diez proveedores**
 **Consigna**: salones, organizadores, equipos de mozos y seguridad, **evitando repetir código**.
 
 ```wollok
-class Salon {
+class Proveedor {
     var property precioPorSector
-    method cuantoCobra(unaFiesta) = precioPorSector * unaFiesta.cantidadDeSectores() * unaFiesta.duracion()
+
+    method costoBase(unaFiesta) = precioPorSector * unaFiesta.cantidadDeSectores()
 }
-// Organizador, EquipoDeMozos y Seguridad: misma idea, cada uno con su cuenta
+
+class Salon inherits Proveedor {
+    method cuantoCobra(unaFiesta) = self.costoBase(unaFiesta) * unaFiesta.duracion()
+}
+
+class Organizador inherits Proveedor {
+    const property recargo = 1.2 // 20%
+
+    method cuantoCobra(unaFiesta) = if (unaFiesta.esComplicada()) { self.costoBase(unaFiesta) * recargo } else { self.costoBase(unaFiesta) }
+}
+
+class Seguridad inherits Proveedor {
+    var property recargo //float ej 25% -> 1.25
+
+    method cuantoCobra(unaFiesta) = self.costoBase(unaFiesta) * (if (unaFiesta.esLarga()) {recargo} else {1})
+}
+
+class EquipoDeMozos {
+    var property mozosPorSector
+    const property mozoPorHora = 50
+
+    method cuantoCobra(unaFiesta) = mozosPorSector * mozoPorHora * unaFiesta.cantidadDeSectores() * unaFiesta.duracion()
+}
 ```
 
-Y los proveedores concretos son **instancias** (están al final de `example.wlk`):
+- **`Proveedor` es la superclase** de `Salon`, `Organizador` y `Seguridad`. Comparten el atributo `precioPorSector` y el método `costoBase(fiesta)` ("precio por sector × cantidad de sectores"), escrito una sola vez. Cada subclase define su propio `cuantoCobra(fiesta)` a partir de `costoBase`, usando `self.costoBase(...)`: el lookup lo encuentra en `Proveedor`.
+- **`Proveedor` nunca se instancia** con `new`, así que es una clase abstracta "naturalmente" (clase 24, punto 5.1).
+- **`EquipoDeMozos` no hereda**. Matías lo justifica en el README con que no comparte `precioPorSector`. Ver la advertencia de abajo.
+
+Y los proveedores concretos son **instancias**, como constantes al final de `example.wlk`:
 
 ```wollok
 const losTilos = new Salon(precioPorSector = 500)
-const escudo = new Seguridad(recargo = 1.1)
-...
+const marta = new Organizador(precioPorSector = 600)
+const eliana = new Organizador(precioPorSector = 1500)
+const losPibes = new EquipoDeMozos(mozosPorSector = 2)
+const dodain = new EquipoDeMozos(mozosPorSector = 3)
+const escudo = new Seguridad(precioPorSector = 100, recargo = 1.1)
+const silvina = new Seguridad(precioPorSector = 100, recargo = 1.25)
 ```
 
 **Una clase por comportamiento, una instancia por proveedor**: Escudo y Silvina calculan igual, solo cambia el recargo → misma clase, dos instancias (clase 24, el ejemplo de los descuentos).
@@ -224,11 +255,11 @@ const escudo = new Seguridad(recargo = 1.1)
 
 Es el mejor ejemplo para la pregunta del README sobre los **tests de regresión**.
 
-### ⚠️ Lo que queda pendiente (de Matías)
+### ⚠️ Lo que se le puede preguntar a Matías (cómo quedó en la entrega)
 
-- **Código repetido**: las cuatro clases repiten "precio × sectores". La solución es una superclase `ProveedorPorSector` con la cuenta escrita una vez y dos métodos abstractos (`montoPorSector()` y `ajuste(fiesta)`). Ver el [Cierre, punto 2](#2-herencia-qué-se-comparte-y-qué-se-redefine).
-- **`1.2` en `Organizador`** es un número mágico, lo mismo que nos marcaron a nosotros.
-- **El `if` repite la cuenta entera** en las dos ramas. Lo correcto es que el `if` decida solo el recargo.
+- **`EquipoDeMozos` fuera de la jerarquía.** Mozos también hace "algo × cantidad de sectores": su "precio por sector" sería `mozosPorSector × 50`. El corrector puede marcar que ahí quedó código repetido, y la consigna pedía "evitando repetir código". La justificación del README es que no comparte `precioPorSector`.
+- **El `if` de `Organizador` repite `self.costoBase(unaFiesta)`** en las dos ramas. Lo que cambia es solo el recargo. El `1.2` sí quedó con nombre (`recargo`), así que no es un número mágico.
+- **Los tests de proveedores por sector "con fiestas de resguardo" usan fiestas reales** (`new Fiesta(...)` con `SectorDeMesas`), no objetos anónimos como pide la consigna. Los de caterings sí son anónimos. El grupo decidió dejarlo así porque son tests de Matías.
 
 ---
 
@@ -332,7 +363,17 @@ method puedeContratar(proveedor) = proveedor.cuantoCobra(fiesta) <= self.presupu
 
 - **Polimorfismo**: `proveedor` puede ser un catering (wko) o una instancia de `Salon`, `Seguridad`, etc. El cliente no lo distingue: solo le pide `cuantoCobra(fiesta)`. Es el "Comprador" de la clase 23 (módulo 8, punto 7): aparecen proveedores nuevos **sin tocar al cliente**.
 - **Le pasa su propia fiesta**: el cliente conoce su fiesta y se la da al proveedor para que calcule. Ni el cliente sabe calcular lo que cobra un salón, ni el salón tiene que conocer al cliente.
-- **Es una pregunta**: siempre devuelve un booleano, nunca lanza error (clase 22, módulo 10, punto 10.2).
+- **Es una pregunta**: siempre devuelve un booleano, nunca lanza error (clase 22, módulo 10, punto 10.2). El resultado es la comparación `<=`, y una comparación siempre da `true` o `false`:
+  - `isabella.puedeContratar(escudo)` → 200 ≤ 1650 → `true`
+  - `isabella.puedeContratar(losTilos)` → 4000 ≤ 1650 → `false`
+
+  Si no le alcanza, devuelve `false`: **no** lanza error. Si mezclara `true` con una excepción, quien la usa no sabría qué esperar. Ese booleano lo usan tres:
+
+  | Quién | Para qué |
+  |---|---|
+  | `validarPresupuesto` | si da `false` (`!self.puedeContratar(...)`), lanza el error |
+  | la agencia | en el `filter`, se queda con los proveedores que dan `true` |
+  | los tests | `assert.that(...)` si se espera `true`, `assert.notThat(...)` si se espera `false` |
 - **El presupuesto se calcula, no se guarda**: si se guardara como atributo, habría que acordarse de actualizarlo cada vez que cambian los ahorros. Calculándolo, **siempre** está al día. Por eso "contratar actualiza el presupuesto" no requiere hacer nada extra.
 
 ---
@@ -372,7 +413,7 @@ method validarPresupuesto(proveedor) {
 2. **La validación va primero.** Si falla, la excepción corta el método **antes** de descontar y de registrar. Por eso el estado del cliente no cambia, que es justo lo que la consigna pide verificar en los tests.
 3. **La validación tiene su propio método** (`validarPresupuesto`), como `validarMontoPositivo` del monedero: `contratar` se lee como la consigna (validar, descontar, registrar).
 4. **Reutiliza la pregunta** `puedeContratar`, en lugar de repetir la cuenta. Es la técnica de la clase 22 (punto 10.3) de **separar la pregunta de la acción**, que acá sí hace falta porque necesitamos las dos: la pregunta la usa la agencia, y la acción, el cliente al contratar.
-5. **El cliente no atrapa la excepción** (no hay `try/catch`). La clase 22 (punto 7): los objetos de dominio **lanzan, no atrapan**. Solo la atrapan los tests (o una interfaz de usuario).
+5. **El cliente no atrapa la excepción** (no hay `try/catch`). La clase 22 (punto 7): los objetos de dominio **lanzan, no atrapan**. Solo la atrapan los tests (o una interfaz de usuario). Está explicado en detalle en el [Cierre, sección 7](#lanzar-y-atrapar-quién-hace-cada-cosa-y-por-qué).
 
 > ⚠️ Fijate que **no** es "mirar a un costado": si no alcanza, **avisa**. Y fijate que la pregunta `puedeContratar` **nunca** lanza error, siempre devuelve `true` o `false`. El error es solo de la **acción**.
 
@@ -458,6 +499,55 @@ Se lee igual que la consigna: **"no es larga la fiesta, y además (`&&`) es derr
 ### ¿Por qué `super()` y no `self.esDerrochon()`?
 
 Si dentro de `esDerrochon()` de `Fiestero` pusiéramos `self.esDerrochon()`, el lookup empezaría otra vez en `Fiestero`, encontraría el mismo método y lo volvería a llamar: **loop infinito** (clase 24, punto 3.4). `super` saltea `Fiestero` y empieza a buscar en `Cliente`.
+
+### ¿Por qué `super()` va sin argumentos? ¿Cuándo se le pasa algo?
+
+`super(...)` llama **al mismo método** de la superclase, y los paréntesis son para pasarle **los argumentos que ese método necesita**. `super` no lleva nombre de método: siempre llama al método **que estás redefiniendo**, el mismo en el que está escrito. Por eso solo se escriben los argumentos.
+
+**El ejemplo del Petrel (clase 24, punto 3.2)**:
+
+```wollok
+class Ave {
+    method volar(kilometros) {
+        energia = energia - (kilometros + 10)
+    }
+}
+
+class Petrel inherits Ave {
+    override method volar(kilometros) {
+        super(kilometros)                                   // = "el volar de Ave, con estos kilómetros"
+        kilometrosVolados = kilometrosVolados + kilometros
+    }
+}
+```
+
+El `volar` de `Ave` **necesita** saber cuántos kilómetros vuela para descontar la energía. Con `super()` sin argumento, el `volar` de `Ave` no sabría cuánto restar, y Wollok daría error porque falta un parámetro.
+
+**Por qué nosotros no le pasamos nada**:
+
+```wollok
+class Cliente {
+    method esDerrochon() = !servicios.filter({ servicio => servicio.monto() > montoDerroche }).isEmpty()
+}
+
+class Fiestero inherits Cliente {
+    override method esDerrochon() = !fiesta.esLarga() && super()
+}
+```
+
+`esDerrochon()` **no recibe parámetros**: para saber si el cliente es derrochón, le alcanza con sus propios atributos (`servicios` y `montoDerroche`). Entonces `super()` va vacío: no hay nada que pasarle.
+
+**La regla**: `super` lleva **la misma cantidad de argumentos** que el método que estás redefiniendo.
+
+| Método redefinido | Llamada a `super` |
+|---|---|
+| `volar(kilometros)` (Petrel, clase 24) | `super(kilometros)` |
+| `comer(gramos)` (Torcaza, clase 24) | `super(gramos)` |
+| `esDerrochon()` (Fiestero, nuestro TP) | `super()` |
+
+Normalmente se le pasa **el mismo valor** que se recibió, pero podría ser otro: `super(kilometros * 2)` haría que el ave gaste energía como si volara el doble. Lo importante es que la **cantidad** coincida.
+
+> **En la defensa**: "`super` llama al mismo método en la superclase, y entre paréntesis van los argumentos que ese método necesita. `esDerrochon()` no recibe parámetros, así que `super()` va vacío. En el Petrel, en cambio, `volar` recibe los kilómetros, y por eso es `super(kilometros)`."
 
 ### Method lookup, paso a paso
 
@@ -827,7 +917,17 @@ class Servicio {
 
 ## Paso 12: los tests
 
-Están en `fixtureCompartido.wtest`, junto con los de la agencia (ver [punto grupal](#entrega-2--punto-grupal-la-agencia-el-fixture-y-el-readme)).
+Están en `tests.wtest`, en dos `describe`: **"Punto 3: Contrataciones y derrochones"** y **"Regresión de la entrega 1: Isabella (punto 3)"**. Los clientes los toman del objeto `fixtureCompartido` (ver [punto grupal](#entrega-2--punto-grupal-la-agencia-el-fixture-y-el-readme)):
+
+```wollok
+describe "Punto 3: Contrataciones y derrochones" {
+    const isabella = fixtureCompartido.isabella()
+    const milena = fixtureCompartido.milena()
+    const damian = fixtureCompartido.damian()
+    const tomas = fixtureCompartido.tomas()
+    ...
+}
+```
 
 ### El test de error
 
@@ -887,6 +987,9 @@ Porque cambia un comportamiento (`esDerrochon`). Hereda todo lo demás de `Clien
 
 **¿Qué hace `super()`?**
 Hace que el method lookup **saltee** la clase donde está escrito (`Fiestero`) y empiece a buscar en la superclase (`Cliente`). El receptor sigue siendo el mismo objeto.
+
+**¿Por qué `super()` va sin nada entre paréntesis?**
+Porque `esDerrochon()` no recibe parámetros. `super` lleva los mismos argumentos que el método que se redefine: en el Petrel es `super(kilometros)` porque `volar` recibe los kilómetros.
 
 **¿Por qué no `self.esDerrochon()` en lugar de `super()`?**
 Porque el lookup empezaría otra vez en `Fiestero` y se llamaría a sí mismo: loop infinito.
@@ -976,47 +1079,91 @@ La agencia y los tests necesitan referirse a **cada** proveedor por su nombre. C
 
 ### ¿Qué es un fixture?
 
-El **escenario inicial** que necesitan los tests: los objetos ya creados y configurados antes de que cada test empiece. Se arma **una sola vez** en el `describe`, en lugar de repetirlo en cada test (clase 23, módulo 11, punto 2).
+El **escenario inicial** que necesitan los tests: los objetos ya creados y configurados antes de que cada test empiece. Se arma **una sola vez**, en lugar de repetirlo en cada test (clase 23, módulo 11, punto 2).
+
+### El problema: varios `describe` necesitan lo mismo
+
+Los tests están en **un solo archivo** (`tests.wtest`) con **varios `describe`**, uno por tema:
+
+| `describe` | ¿Usa fiestas o clientes del enunciado? |
+|---|---|
+| Punto 1: Respecto a las fiestas | sí, las 3 fiestas |
+| Respecto a los proveedores, con fiestas de resguardo (puntos 1 y 2) | no, usa fiestas de prueba |
+| Respecto a los proveedores, con las fiestas de los clientes (puntos 1 y 2) | sí, las 3 fiestas |
+| Agencia (Punto Grupal) | sí, Isabella, Milena y Damián |
+| Punto 3: Contrataciones y derrochones | sí, los 4 clientes |
+| Regresión de la entrega 1: caterings por cantidad de invitados (punto 1) | no |
+| Regresión de la entrega 1: Isabella (punto 3) | sí, Isabella |
+
+Lo declarado en un `describe` **no se puede usar desde otro** (clase 23, punto 2.5). Si cada `describe` armara sus fiestas y clientes, la fiesta de Damián quedaría escrita varias veces. Eso pasaba en una versión anterior: estaba **4 veces**.
+
+### La solución: un objeto aparte (clase 23)
+
+La clase 23 (punto 2.5) lo resuelve así: *"Si hace falta compartir la creación de objetos entre varios [`describe`], conviene poner esa responsabilidad en un **objeto aparte**"*. Ese objeto es `fixtureCompartido`, en el archivo `fixtureCompartido.wlk`:
 
 ```wollok
-describe "Fixture compartido: fiestas, clientes y agencia" {
-  // 1. Variables del describe
-  const fiestaIsabella = new Fiesta(duracion = 4, sectores = [...])
-  const fiestaMilena = new Fiesta(duracion = 6, sectores = [...])
-  const fiestaDamian = new Fiesta(duracion = 8, sectores = [...])
+import example.*
 
-  const isabella = new Cliente(ahorros = 2750, fiesta = fiestaIsabella, porcentajeDisponible = 0.6)
-  const milena = new Cliente(ahorros = 2000, fiesta = fiestaMilena)
-  const damian = new Fiestero(ahorros = 250000, fiesta = fiestaDamian)
-  const tomas = new Fiestero(ahorros = 250000, fiesta = fiestaIsabella)
+object fixtureCompartido {
+    const property fiestaIsabella = new Fiesta(duracion = 4, sectores = [...])
+    const property fiestaMilena = new Fiesta(duracion = 6, sectores = [...])
+    const property fiestaDamian = new Fiesta(duracion = 8, sectores = [...])
 
-  // 2. initialize: la configuración que no es solo crear objetos
-  method initialize() {
-    agencia.incorporar(doniaRosa)
-    ... (los diez)
-  }
+    const property isabella = new Cliente(ahorros = 2750, fiesta = fiestaIsabella, porcentajeDisponible = 0.6)
+    const property milena = new Cliente(ahorros = 2000, fiesta = fiestaMilena)
+    const property damian = new Fiestero(ahorros = 250000, fiesta = fiestaDamian)
+    const property tomas = new Fiestero(ahorros = 250000, fiesta = fiestaIsabella)
 
-  // 3. Los tests
-  test "..." { ... }
+    method prepararAgencia() {
+        agencia.incorporar(doniaRosa)
+        ... (los diez)
+    }
 }
 ```
 
+Cada `describe` toma **solo lo que necesita**, como variables del `describe` a partir de un mensaje (clase 23, punto 2.2: pueden ser *"resultados de mensajes"*):
+
+```wollok
+import example.*
+import fixtureCompartido.*
+
+describe "Agencia (Punto Grupal)" {
+    const isabella = fixtureCompartido.isabella()
+    const milena = fixtureCompartido.milena()
+    const damian = fixtureCompartido.damian()
+
+    method initialize() {
+        fixtureCompartido.prepararAgencia()
+    }
+
+    test "Milena solo puede pagarle a Escudo y a Silvina" {
+        assert.equals(#{escudo, silvina}, agencia.proveedoresQuePuedePagar(milena))
+    }
+}
+```
+
+> **¿Por qué no se llama `fixture`?** Porque `fixture` es una **palabra reservada** de Wollok: en versiones anteriores, `fixture { ... }` era la inicialización de un `describe` (lo que hoy es `method initialize()`). Wollok da error si se usa como nombre.
+
+### ¿Por qué un solo archivo de tests?
+
+La clase 22 (módulo 5, punto 8) dice que *"si corresponden a unidades bien distintas, conviene separarlos en archivos diferentes"*. Probamos separarlos (fiestas, proveedores, clientes y agencia), pero como en clase no se profundizó sobre eso, el grupo decidió **un solo archivo con varios `describe`**, uno por tema. El objeto `fixtureCompartido` funciona igual en los dos casos.
+
 ### Orden de ejecución de cada test (clase 23, punto 2.5)
 
-1. Se **reinicia** el ambiente (incluida la agencia, que vuelve a estar vacía).
-2. Se crean las **variables** del `describe`.
-3. Se ejecuta el **`initialize`** (se incorporan los diez proveedores).
+1. Se **reinicia** el ambiente: también el objeto `fixtureCompartido` (sus fiestas y clientes vuelven a crearse) y la agencia (vuelve a estar vacía).
+2. Se crean las **variables** del `describe` (`const isabella = fixtureCompartido.isabella()`).
+3. Se ejecuta el **`initialize`** (por ejemplo, `fixtureCompartido.prepararAgencia()`).
 4. Se corre el **test**.
 
-Por eso los tests son **independientes**: el que desvincula a Silvina no afecta al siguiente, que la vuelve a tener.
-
-### ¿Por qué "compartido"?
-
-Antes, cada integrante tenía sus propias fiestas en sus tests. La consigna pide **uno solo** para fiestas, clientes y agencia. Lo declarado en un `describe` **no se puede usar desde otro** (clase 23, punto 2.5), así que los tests que necesitan esas fiestas y clientes (agencia, contratación y regresión de Isabella) están todos en el mismo `describe`.
+Por eso los tests son **independientes**: el que hace que Isabella contrate a Escudo no afecta al siguiente, que la vuelve a tener con $2.750. Y el que desvincula a Silvina tampoco, porque la agencia se vuelve a preparar.
 
 ### Tomás: la fiesta "idéntica"
 
 La consigna dice que la fiesta de Tomás *"es idéntica a la de Isabella"*. En el fixture, Tomás recibe **el mismo objeto** `fiestaIsabella`: son **idénticas** en el sentido de la clase 24 (`===` da `true`). Como contratar no modifica la fiesta, compartirla no trae problemas, igual que el barril compartido de la entrega 1.
+
+> **Un detalle sobre el objeto aparte.** El ejemplo de la clase 23 es un objeto que **crea** objetos nuevos cada vez (*"uno que cree ciudades"*). El nuestro **guarda** los objetos ya creados (`const property`). Funciona igual porque el ambiente se reinicia antes de cada test, y así Tomás e Isabella comparten **la misma** fiesta sin hacer nada extra. Con un objeto que crea, cada llamada haría una fiesta nueva: serían **iguales**, pero no **idénticas**.
+
+> **En la defensa**: "El fixture compartido es un objeto aparte que arma el escenario del enunciado: las fiestas, los clientes y la agencia. Cada `describe` toma de ahí lo que necesita, así no repetimos las declaraciones. Lo sugiere la clase 23 para compartir objetos entre `describe`. Como el ambiente se reinicia antes de cada test, cada test arranca desde el estado inicial."
 
 ## 4. Las respuestas del README
 
@@ -1024,7 +1171,7 @@ La consigna dice que la fiesta de Tomás *"es idéntica a la de Isabella"*. En e
 
 **`Fiestero` hereda de `Cliente`**: comparte todo (ahorros, fiesta, presupuesto, contratar, servicios, gasto, proveedores contratados) y redefine solo `esDerrochon()`, reutilizando la regla general con `super()`.
 
-**Si Matías hace la superclase**, también `Salon`, `Organizador`, `EquipoDeMozos` y `Seguridad` heredan de `ProveedorPorSector`: comparten la cuenta "monto por sector × sectores × ajuste" y cada una define `montoPorSector()` y `ajuste(fiesta)`.
+**`Salon`, `Organizador` y `Seguridad` heredan de `Proveedor`**: comparten el atributo `precioPorSector` y el método `costoBase(fiesta)` ("precio por sector × cantidad de sectores"). Cada una define su `cuantoCobra(fiesta)` a partir de `costoBase`. `EquipoDeMozos` no hereda: según el README, porque no comparte `precioPorSector`. El README también menciona la alternativa descartada: un `Proveedor` general, con `ProveedorPorSector` y mozos como hijas, que no usaron porque `Proveedor` quedaría vacía.
 
 **Isabella no es subclase**: solo cambia un valor (el 60%), no un comportamiento.
 
@@ -1032,7 +1179,16 @@ La consigna dice que la fiesta de Tomás *"es idéntica a la de Isabella"*. En e
 
 **No.** Siguen entendiendo `cuantoCobraTotal(cantidadInvitados)`, que no cambió. `cuantoCobra(fiesta)` se agregó **encima** y reutiliza ese cálculo. Los valores son los mismos ($1.100 por 40 invitados, etc.).
 
-> ⚠️ La tabla de la entrega 2 pide probarlos "por una fiesta de 40 invitados" (con fiestas de resguardo). Hoy `testExample.wtest` prueba `cuantoCobraTotal(40)` directo. Si el corrector lo pregunta, hay que reconocerlo.
+En `tests.wtest` están las dos cosas: el `describe` "Regresión de la entrega 1: caterings por cantidad de invitados" (los casos de la entrega 1, sin cambios) y los casos "por una fiesta de 40 invitados" con **objetos anónimos**, en el `describe` de fiestas de resguardo:
+
+```wollok
+test "Cuánto cobra Doña Rosa por una fiesta de 40 invitados" {
+    const fiesta40 = object {
+        method cantidadInvitados() = 40
+    }
+    assert.equals(1100, doniaRosa.cuantoCobra(fiesta40))
+}
+```
 
 ### ¿Y los de Isabella?
 
@@ -1051,6 +1207,16 @@ Todo el TP se apoya en un puñado de ideas que se repiten. Si entendés estas nu
 
 ## 1. Clase, instancia, wko u objeto anónimo
 
+### Si te preguntan qué es cada uno, en una oración
+
+> **wko (well-known object)**: "Es un objeto único, definido con `object`, que existe desde el principio y al que cualquiera puede hablarle por su nombre, como la `agencia` o `doniaRosa`."
+
+> **Clase**: "Es un molde que define el comportamiento y la estructura que comparten varios objetos; cada objeto creado con `new` es una instancia con su propio estado, como cada `Cliente`."
+
+> **La diferencia**: "Uso un wko cuando el concepto es único, y una clase cuando hay varios objetos que se comportan igual y solo cambian sus valores."
+
+### Cuándo usar cada uno
+
 | Qué | Cuándo | En el TP |
 |---|---|---|
 | **wko** | Concepto único | `barril`, `doniaRosa`, `pizzasNico`, `elBodegon`, `agencia` |
@@ -1062,28 +1228,30 @@ Todo el TP se apoya en un puñado de ideas que se repiten. Si entendés estas nu
 
 ## 2. Herencia: qué se comparte y qué se redefine
 
-| | `Fiestero` → `Cliente` | `ProveedorPorSector` (pendiente, Matías) |
+| | `Fiestero` → `Cliente` | `Salon`, `Organizador`, `Seguridad` → `Proveedor` |
 |---|---|---|
-| Qué comparten | todo el cliente | la cuenta de `cuantoCobra` |
-| Qué cambia | `esDerrochon()` | `montoPorSector()` y `ajuste(fiesta)` |
-| Cómo | `override` + `super()` | métodos abstractos (sin cuerpo) + `override` |
+| Qué comparten | todo el cliente | el atributo `precioPorSector` y el método `costoBase(fiesta)` |
+| Qué cambia | `esDerrochon()` | cada una define su `cuantoCobra(fiesta)` |
+| Cómo | `override` + `super()` | métodos nuevos en cada subclase que usan `self.costoBase(...)` |
 
 ```wollok
-// Cómo quedaría la superclase de los proveedores
-class ProveedorPorSector {
-    method cuantoCobra(unaFiesta) = self.montoPorSector() * unaFiesta.cantidadDeSectores() * self.ajuste(unaFiesta)
-    method montoPorSector()
-    method ajuste(unaFiesta)
+class Proveedor {
+    var property precioPorSector
+    method costoBase(unaFiesta) = precioPorSector * unaFiesta.cantidadDeSectores()
 }
 
-class Salon inherits ProveedorPorSector {
-    const precioPorSector
-    override method montoPorSector() = precioPorSector
-    override method ajuste(unaFiesta) = unaFiesta.duracion()
+class Salon inherits Proveedor {
+    method cuantoCobra(unaFiesta) = self.costoBase(unaFiesta) * unaFiesta.duracion()
 }
 ```
 
-**Clase abstracta**: `ProveedorPorSector` nunca se instancia con `new`, y tiene métodos sin cuerpo. En Wollok no hace falta declararla abstracta.
+**Method lookup de `losTilos.cuantoCobra(fiesta)`**: busca `cuantoCobra` en `Salon` → lo encuentra → adentro, `self.costoBase(...)` se busca en `Salon` → no está → sube a `Proveedor` → lo encuentra y lo ejecuta con el `precioPorSector` de Los Tilos (500).
+
+**Clase abstracta**: `Proveedor` nunca se instancia con `new` (solo sus subclases), así que es abstracta "naturalmente". En Wollok no hace falta declararlo (clase 24, punto 5.1).
+
+> **Una diferencia con `Fiestero`**: las subclases de `Proveedor` no **redefinen** nada (no usan `override`), porque `Proveedor` no tiene `cuantoCobra`. Agregan un método nuevo que **reutiliza** uno heredado (`costoBase`). `Fiestero`, en cambio, **redefine** `esDerrochon()` y usa `super()` para reutilizar la versión de `Cliente`. Son las dos formas de aprovechar la herencia: agregar comportamiento usando lo heredado, o redefinir lo heredado.
+
+> ⚠️ **`EquipoDeMozos` no hereda de `Proveedor`.** Su cuenta también es "algo × cantidad de sectores" (`mozosPorSector × 50 × sectores × horas`), así que se podría discutir que quedó código repetido. La justificación del README es que no comparte `precioPorSector`.
 
 ### ¿Qué es herencia y qué es composición?
 
@@ -1156,7 +1324,7 @@ Por eso la pila va con composición: no **es** una lista, solo **usa** una.
 | Relación | Tipo | Por qué |
 |---|---|---|
 | `Fiestero` → `Cliente` | **herencia** ("es un") | intrínseco, cambia un solo comportamiento |
-| Proveedores por sector → `ProveedorPorSector` | **herencia** ("es un") | un salón nunca se convierte en seguridad |
+| `Salon`, `Organizador`, `Seguridad` → `Proveedor` | **herencia** ("es un") | comparten `precioPorSector` y `costoBase`; un salón nunca se convierte en seguridad |
 | `Cliente` → `Fiesta`, `Servicio` | **composición** ("tiene un") | el cliente conoce su fiesta y sus servicios |
 | `Fiesta` → sectores | **composición** | la fiesta conoce sus sectores |
 | `agencia` → proveedores | **composición** | la agencia conoce a sus proveedores |
@@ -1376,9 +1544,172 @@ El conjunto decide "repetido" usando `==`, que por defecto es identidad. Ver [ig
 | `isEmpty()` | ¿está vacía? | `esDerrochon` |
 | `forEach({ ... })` | hace algo con cada uno | `proveedoresContratados` |
 
-`filter` y `map` **no modifican** la colección original: devuelven una nueva. Y `asSet()` / `any(...)` **no** los usamos porque no están en los resúmenes.
+`asSet()` y `any(...)` **no** los usamos porque no están en los resúmenes. `forEach` sí está: en la clase 24 (punto 6.2, `[pepita, new Ave(), tweety, chichita].forEach({ ave => ave.volar(5) })`) y mencionado en la clase 22 (punto 5.5).
+
+### ¿Cuáles modifican la colección y cuáles no?
+
+`map` y `filter` **no modifican** la colección que reciben: la dejan exactamente como estaba y **arman una nueva** con los resultados (clase 22, puntos 7.7 y 7.8: *"Tampoco tiene efecto colateral sobre la colección original"*).
+
+```wollok
+const servicios = [servicioSilvina, servicioEscudo]
+const proveedores = servicios.map({ servicio => servicio.proveedor() })
+// servicios   → sigue siendo [servicioSilvina, servicioEscudo]
+// proveedores → [silvina, escudo], una lista NUEVA
+```
+
+"Transformar" no quiere decir que los servicios se conviertan en proveedores dentro de la lista original. Quiere decir que, para cada servicio, se calcula algo y ese resultado va a **otra** lista.
+
+**Por qué importa** (clase 22, punto 7.7): preguntar *"¿cuáles clientes me deben plata?"* no puede hacerte perder a los que sí pagaron. En el TP:
+
+- `esDerrochon()` hace `servicios.filter(...)`. Si modificara `servicios`, preguntar si Isabella es derrochona le borraría los servicios baratos, y `cantidadServicios()` daría mal.
+- La agencia hace `proveedores.filter(...)`. Si modificara el conjunto, preguntar a quién puede pagar Milena le sacaría a la agencia los proveedores caros.
+
+| Mensaje | ¿Modifica la colección? | ¿Qué devuelve? | Es una… |
+|---|---|---|---|
+| `map({ ... })` | **no** | una colección nueva con los resultados | pregunta |
+| `filter({ ... })` | **no** | una colección nueva con los que cumplen | pregunta |
+| `sum`, `size`, `isEmpty`, `contains` | **no** | un número o un booleano | pregunta |
+| `forEach({ ... })` | **no** la colección, pero el bloque puede **hacer cosas** | nada útil | acción |
+| `add(x)`, `remove(x)` | **sí** | nada útil | acción |
+
+### `forEach`: no devuelve nada, ejecuta el bloque con cada uno
+
+`forEach` ejecuta el bloque con cada elemento y **no devuelve nada útil**. El efecto lo produce **lo que hace el bloque**, y puede caer sobre los elementos o sobre **otro objeto**:
+
+**El efecto cae sobre los elementos** (clase 24):
+
+```wollok
+[pepita, new Ave(), tweety, chichita].forEach({ ave => ave.volar(5) })
+```
+
+Cada ave **cambia su energía**: se modifican los elementos.
+
+**El efecto cae sobre otro objeto** (nuestro TP):
+
+```wollok
+servicios.forEach({ servicio => proveedores.add(servicio.proveedor()) })
+```
+
+Los servicios **no cambian** (solo se les pregunta `proveedor()`). Lo que cambia es **otro** objeto, el conjunto `proveedores`, que recibe un `add` por cada servicio.
+
+**En los dos casos la colección que se recorre no cambia**: la lista sigue teniendo las mismas aves, y `servicios`, los mismos servicios.
+
+**Regla para elegir**: si querés **obtener** algo → `map`, `filter`, `sum`. Si querés **hacer** algo con cada uno → `forEach`. Un `forEach` cuyo bloque no produce ningún efecto no sirve para nada, porque no devuelve resultado.
+
+### ¿Funcionan igual en listas y conjuntos?
+
+**Todos los que usamos funcionan en los dos**, pero se comportan distinto según la colección. Lo verificamos con Wollok:
+
+| Mensaje | En una lista | En un conjunto |
+|---|---|---|
+| `add(x)` | lo agrega, **aunque ya esté** | lo agrega **solo si no está** |
+| `remove(x)` | saca **una** aparición | lo saca |
+| `size()` | cuenta todos, con repetidos | cuenta los distintos |
+| `contains(x)`, `isEmpty()`, `sum`, `forEach` | ✓ | ✓ |
+| `filter({ ... })` | devuelve una **lista** | devuelve un **conjunto** |
+| `map({ ... })` | devuelve una **lista** | devuelve una **lista** ⚠️ |
+
+#### ⚠️ `map` sobre un conjunto devuelve una lista
+
+```wollok
+#{1, 2, 3}.map({ n => 0 })     // → [0, 0, 0]   (lista, con repetidos)
+```
+
+Tiene sentido: al transformar, dos elementos distintos pueden dar el mismo resultado, y `map` no los colapsa.
+
+Esto confirma que en `proveedoresContratados()` hicimos bien en armar el conjunto con `#{}` + `forEach` + `add`. Con `servicios.map({ servicio => servicio.proveedor() })`, el resultado sería una **lista con Silvina y Escudo repetidos**, y el test de Milena fallaría.
+
+#### Los que son solo de listas
+
+Las listas tienen **orden**, así que entienden mensajes que dependen de la posición. Los conjuntos no, porque no tienen orden:
+
+```wollok
+[1, 2, 3].last()     // → 3
+#{1, 2, 3}.last()    // → error
+```
+
+`last()` aparece en la clase 23 (`ciudadesFavoritas.last()` de pepita, que es una lista). En el TP no usamos ninguno de estos.
 
 ## 6. Estado: `var`, `const`, `property` y cuándo poner getters y setters
+
+### `var` y `const` (clase 21, módulo 2, punto 6)
+
+Las dos declaran una **referencia** (un nombre que apunta a un objeto). La diferencia es si esa referencia **puede pasar a apuntar a otro objeto** después.
+
+| | Significado | ¿Se puede hacer `x = otraCosa`? |
+|---|---|---|
+| `var` | referencia **variable** | sí |
+| `const` | referencia **fija** | no: da error |
+
+```wollok
+var edad = 10
+edad = 11          // ✓ apunta a otro número
+
+const edadAdulta = 21
+edadAdulta = 18    // ✗ ESTO DA ERROR
+```
+
+#### La trampa: `const` no significa "no cambia nada"
+
+`const` fija **la referencia**, no **el objeto** al que apunta. Si el objeto es una colección, se le pueden agregar y sacar elementos igual:
+
+```wollok
+const servicios = []
+
+servicios.add(unServicio)    // ✓ cambia el CONTENIDO de la lista
+servicios = []               // ✗ ERROR: intenta que la referencia apunte a OTRA lista
+```
+
+Es como una caja con tu nombre pegado: `const` dice que el nombre siempre está pegado a **esa** caja, pero lo que hay adentro puede cambiar. Es el ejemplo de Shrek (clase 22, punto 7.1): `const misiones = #{}` porque *"siempre va a apuntar al mismo conjunto; lo que cambia es el contenido"*.
+
+**Con los números es al revés**: son **inmutables** (clase 22, punto 1), así que `ahorros + 100` no modifica el número, **crea uno nuevo**. Para que los ahorros cambien, la referencia tiene que pasar a apuntar al número nuevo, y eso solo se puede con `var`:
+
+```wollok
+var ahorros = 2750
+ahorros = ahorros + 100    // la referencia pasa a apuntar al número 2850
+```
+
+#### Cuándo usar cada una
+
+**La pregunta es: ¿alguna vez voy a escribir `nombre = ...` después de la declaración?**
+
+- **Sí** → `var`.
+- **No** → `const`.
+
+Ante la duda, `const`: es más seguro, porque si por error intentás reasignar, Wollok te avisa.
+
+#### En el TP
+
+| Declaración | Por qué |
+|---|---|
+| `var ahorros` | Se reasigna: `ahorros = ahorros + monto` y `ahorros = ahorros - monto`. |
+| `const fiesta` | El cliente siempre tiene la misma fiesta; nunca se reasigna. |
+| `const porcentajeDisponible = 0.2` | Nunca cambia (Isabella nace con 0.6, pero no se reasigna después). |
+| `const montoDerroche = 3000` | Nunca cambia. |
+| `const servicios = []` | Siempre es **la misma lista**; solo cambia su contenido con `add`. |
+| `const proveedores = #{}` (agencia) | Siempre el mismo conjunto; cambia con `add` y `remove`. |
+| `var property precio = 300` (barril) | Se reasigna con el setter cuando aumenta el barril. |
+
+También vale para las **variables locales** dentro de un método:
+
+```wollok
+method contratar(proveedor) {
+    self.validarPresupuesto(proveedor)
+    const monto = proveedor.cuantoCobra(fiesta)    // se calcula una vez y no cambia
+    ...
+}
+
+method proveedoresContratados() {
+    const proveedores = #{}                         // siempre el mismo conjunto, se le agregan cosas
+    ...
+}
+```
+
+Y en los **tests**: las variables del `describe` son `const` (`const isabella = new Cliente(...)`). Isabella cambia **por dentro** cuando contrata, pero la referencia `isabella` apunta siempre al mismo objeto.
+
+> ⚠️ **Detalle del código del punto 1**: en `Fiesta` y en los sectores están declarados `var property duracion`, `var property cantidadMesas`, etc., pero nadie los reasigna nunca. Podrían ser `const` (o `const property`). No rompe nada, pero si preguntan "¿por qué es `var`?", no hay una razón.
+
+> **En la defensa**: "`var` es una referencia que puede pasar a apuntar a otro objeto, y `const` una que no. Uso `var` solo si reasigno, como `ahorros`. Para `servicios` uso `const`, porque la lista siempre es la misma: lo que cambia es su contenido, y eso no es reasignar."
 
 ### Las herramientas (clase 21, módulo 2)
 
@@ -1431,6 +1762,129 @@ En `Servicio`, en cambio, sí usamos `const property`: el cliente necesita **lee
 - **Validar antes de modificar**: así, si falla, el estado queda como estaba.
 - **Lista vacía no es error**.
 
+### Lanzar y atrapar: quién hace cada cosa y por qué
+
+Hay que separar **dos momentos** de un error:
+
+- **Lanzar** una excepción es **avisar** que algo salió mal. Es lo que hace `self.error(...)`: corta el método y el error empieza a "subir".
+- **Atrapar** una excepción es **recibir** ese aviso y decidir qué hacer. Se hace con `try/catch`:
+
+```wollok
+try {
+    // código que puede fallar
+} catch e : Exception {
+    // qué hacer si falla
+}
+```
+
+#### La analogía: la alarma de incendio
+
+- El **detector de humo** se da cuenta de que hay un problema y **suena**. No apaga el fuego, porque no sabe hacerlo: solo avisa. → **Lanzar**.
+- El **bombero** escucha la alarma y **hace algo**: apaga el fuego. → **Atrapar**.
+- Un **inspector** prende un fósforo cerca del detector para **comprobar que suene**. No apaga ningún fuego: quiere verificar que la alarma funciona. → Lo que hace un **test**.
+
+El detector **no** se responde a sí mismo: si sonara y él mismo se apagara, nadie se enteraría del fuego.
+
+#### Las dos preguntas para decidir
+
+| Pregunta | Si la respuesta es **sí** | En el TP |
+|---|---|---|
+| ¿**Detecté** algo que no debería pasar y **no puedo resolverlo** yo? | **Lanzo** (`self.error`) | El cliente detecta que no le alcanza la plata. No puede inventarla → lanza. |
+| ¿Soy **quien sabe qué hacer** con ese error, o **quiero comprobar** que ocurra? | **Atrapo** (`try/catch`) | El test quiere comprobar que, si no alcanza, se lance el error → atrapa. |
+
+Casi siempre, **quien detecta el problema no es quien sabe resolverlo**. Por eso lanzar y atrapar ocurren en **lugares distintos**.
+
+#### Qué pasa cuando nadie la atrapa: la excepción sube
+
+Cuando un método lanza una excepción y él no la atrapa, la excepción **sube** al que lo llamó. Si ese tampoco la atrapa, sigue subiendo, hasta que alguien la atrape o el programa se detenga mostrando el error.
+
+Cuando un test hace `isabella.contratar(losTilos)`:
+
+```
+test  →  isabella.contratar(losTilos)  →  self.validarPresupuesto(losTilos)  →  self.error("...")
+                                                                                        │
+test  ←  contratar se corta acá  ←  validarPresupuesto se corta acá  ←──────────────────┘
+(lo atrapa el assert)  (no descuenta ni registra)
+```
+
+1. `self.error` lanza la excepción dentro de `validarPresupuesto`.
+2. `validarPresupuesto` no la atrapa → sube a `contratar`.
+3. `contratar` no la atrapa → **se corta ahí**, sin descontar ni registrar, y la excepción sube a quien lo llamó.
+4. El test la atrapa con `assert.throwsExceptionWithMessage`.
+
+Por eso el estado de Isabella no cambia: `contratar` se cortó antes de tocar nada.
+
+#### Por qué el cliente no la atrapa
+
+Si `contratar` sí la atrapara:
+
+```wollok
+// lo que NO conviene
+method contratar(proveedor) {
+    try {
+        self.validarPresupuesto(proveedor)
+        const monto = proveedor.cuantoCobra(fiesta)
+        ahorros = ahorros - monto
+        servicios.add(new Servicio(proveedor = proveedor, monto = monto))
+    } catch e : Exception {
+        // ¿¿¿ qué pongo acá ???
+    }
+}
+```
+
+**¿Qué pondría el cliente en el `catch`?** No tiene nada razonable que hacer:
+
+- **No puede arreglarlo**: no puede inventar plata.
+- **Si no hace nada**, el error desaparece. Quien llamó a `contratar` cree que salió bien, pero no se contrató nada. Es exactamente **"mirar a un costado"**, la peor opción de la clase 22 (punto 5.1), solo que escrita con más código.
+
+La clase 22 (punto 7) muestra este mismo ejemplo con un `¿¿¿ Qué hacer ???` adentro del `catch`, y concluye: **dejar que la excepción siga su curso**. Y en el punto 10: *"Nunca atrapar una excepción y no hacer nada con ella: eso oculta el problema y hace que aparezca, disfrazado, más adelante"*.
+
+#### Quién sí la atrapa (clase 22, punto 7)
+
+| Quién | Por qué tiene sentido que la atrape |
+|---|---|
+| **Un test** | Para **verificar** que el error se produjo cuando correspondía. |
+| **La interfaz de usuario** | Para **mostrarle al usuario** un mensaje entendible ("No te alcanza el presupuesto") en lugar de que la aplicación se caiga. El usuario decide qué hacer: ahorrar más o elegir otro proveedor. |
+
+En el TP no hay interfaz de usuario, así que el único que la atrapa es el test.
+
+#### ¿Dónde está el `try/catch` en el test?
+
+No lo escribimos, pero está **adentro** de `assert.throwsExceptionWithMessage`. Ese mensaje hace algo así por dentro:
+
+```wollok
+// Lo que hace assert.throwsExceptionWithMessage(mensajeEsperado, bloque), simplificado
+try {
+    bloque.apply()                                       // ejecuta isabella.contratar(losTilos)
+    // si llegó acá, NO hubo error → el test FALLA ("se esperaba un error")
+} catch e : Exception {
+    // hubo error → lo atrapó
+    // si e tiene el mensaje esperado → el test PASA
+    // si tiene otro mensaje → el test FALLA
+}
+```
+
+Por eso le pasamos el código **dentro de un bloque `{ ... }`**: para que el `assert` lo ejecute él, adentro de su `try`, y pueda atrapar el error. Si lo escribiéramos sin bloque, el error saltaría antes de que el `assert` llegue a hacer nada, y el test se cortaría.
+
+#### Todo junto
+
+```
+   CLIENTE (detector)                         TEST (inspector)
+   ──────────────────                         ────────────────
+   "No me alcanza la plata"                   "Voy a hacer que contrate algo caro
+   → self.error("...")    ── la excepción ──▶   y comprobar que avise"
+   (lanza y se corta)        sube              → assert.throwsExceptionWithMessage
+                                                 (adentro tiene el try/catch)
+```
+
+| | Lanza | Atrapa |
+|---|---|---|
+| **Quién** | el objeto de dominio (`Cliente`) | el test (o una interfaz de usuario) |
+| **Con qué** | `self.error("...")` | `assert.throwsExceptionWithMessage(...)`, que tiene el `try/catch` adentro |
+| **Para qué** | avisar que algo salió mal | comprobar que se avisó (test) o decidir qué hacer (interfaz) |
+
+> **En la defensa**: "El cliente lanza porque detecta el problema pero no puede resolverlo. No la atrapa, porque si la atrapara y no hiciera nada sería como mirar a un costado: quien contrata no se enteraría de que falló. El test atrapa porque su trabajo es comprobar que el error aparezca. El `try/catch` del test está adentro del `assert`, por eso no lo escribimos."
+
 ### `self.error(...)` o `throw new UserException(...)`
 
 La clase 22 (módulo 10, punto 6, "Cómo generar una excepción") muestra dos formas de lanzar una excepción:
@@ -1479,12 +1933,13 @@ method validarPresupuesto(proveedor) {
 
 | Herramienta | Para qué | En el TP |
 |---|---|---|
-| `describe` + variables | el fixture | fiestas, clientes |
-| `method initialize()` | configuración antes de cada test | incorporar los diez proveedores |
+| Objeto aparte (`fixtureCompartido`) | el fixture compartido entre varios `describe` | fiestas, clientes y `prepararAgencia()` |
+| `describe` + variables | tomar del fixture lo que usa cada `describe` | `const isabella = fixtureCompartido.isabella()` |
+| `method initialize()` | configuración antes de cada test | `fixtureCompartido.prepararAgencia()` |
 | `assert.equals(esperado, obtenido)` | valores | $2.550, 4 servicios |
 | `assert.that` / `notThat` | booleanos | derrochón, puede contratar |
 | `assert.throwsExceptionWithMessage(msg, { ... })` | errores | contratar a Los Tilos |
-| Objeto anónimo | dobles de prueba (stubs) | fiestas de resguardo del punto 2 |
+| Objeto anónimo | dobles de prueba (stubs) | fiestas de resguardo de los caterings (`object { method cantidadInvitados() = 40 }`) |
 
 - **Independientes**: el ambiente se reinicia antes de cada test.
 - **Un escenario por test**: el nombre describe la situación, no el número.
@@ -1499,12 +1954,25 @@ method validarPresupuesto(proveedor) {
 
 ---
 
-## ⚠️ Lo que queda abierto en el grupo (para saber qué contestar si lo preguntan)
+## ⚠️ Cómo quedó la entrega (para saber qué contestar si lo preguntan)
 
-| Tema | Estado | De quién |
+**Lo que se resolvió:**
+
+| Tema | Cómo quedó |
+|---|---|
+| Superclase para no repetir código en proveedores | `Proveedor` con `precioPorSector` y `costoBase`, heredada por `Salon`, `Organizador` y `Seguridad` |
+| `1.2` en `Organizador` | ahora tiene nombre: `const property recargo = 1.2` |
+| Tests de proveedores (con fiestas de resguardo y con las fiestas de los clientes) | están en `tests.wtest` |
+| Tests de caterings "por una fiesta" | están, con objetos anónimos |
+| Fixture compartido | objeto `fixtureCompartido` en `fixtureCompartido.wlk`, usado por un solo archivo de tests con varios `describe` |
+| Tests duplicados | se eliminaron: quedan 47 tests en `tests.wtest` |
+
+**Lo que quedó así a propósito, pero lo pueden preguntar:**
+
+| Tema | Qué contestar | De quién |
 |---|---|---|
-| Superclase `ProveedorPorSector` (código repetido en proveedores) | pendiente | Matías |
-| `1.2` en `Organizador` (número mágico) | pendiente | Matías |
-| Tests de proveedores (con objetos anónimos y con las fiestas de los clientes) | pendiente | Matías |
-| Tests de caterings "por una fiesta" en lugar de por cantidad | pendiente | Leandro / Matías |
-| `familia` y `facultad` siguen como wkos en los tests del punto 1 | funciona (son polimórficos con los sectores), pero el punto pedía clases | Leandro |
+| `EquipoDeMozos` no hereda de `Proveedor` | Según el README, porque no comparte `precioPorSector`. Se podría discutir que su "precio por sector" es `mozosPorSector × 50` | Matías |
+| Los tests de proveedores por sector "con fiestas de resguardo" usan `new Fiesta(...)`, no objetos anónimos | La consigna pedía objetos anónimos; los de caterings sí lo son | Matías |
+| El `if` de `Organizador` repite `self.costoBase(unaFiesta)` en las dos ramas | Lo que cambia es solo el recargo | Matías |
+| `familia` y `facultad` siguen definidos en `example.wlk` | Ya no los usa ningún test: la fiesta de Isabella se arma con `SectorDeMesas` y `SectorDeGrupos` en el fixture | Leandro |
+| La tabla de reparto del README es la de la entrega 1 | La consigna pide declarar el reparto en el README | el grupo |
