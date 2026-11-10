@@ -14,7 +14,7 @@
 | [1](#punto-1--los-niveles-de-experiencia-leandro) | Niveles de experiencia | **Template Method** | Leandro |
 | [2](#punto-2--la-experiencia-y-el-criterio-de-derroche-matías) | Experiencia y criterio de derroche | **Strategy** | Matías |
 | [3](#punto-3--los-eventos-por-etapas-mi-punto-individual) | Eventos por etapas | **Composite** | **mío** |
-| [Grupal](#punto-grupal--diagrama-readme-y-regresión) | Diagrama, README, regresión, merge y fixture | — | todo el grupo |
+| [Grupal](#punto-grupal--diagrama-readme-y-regresión) | Diagrama, README y regresión | — | todo el grupo |
 | [Cierre](#cierre--conceptos-para-repasar-el-día-antes) | Conceptos para repasar | los tres | — |
 
 Mi punto está explicado paso a paso; los de Leandro y Matías, más resumidos pero con lo que me pueden preguntar igual.
@@ -219,6 +219,154 @@ Es **igual** al ejemplo del alumno de la clase 26 (2.2 y 5.1):
 | `estudiaPara(parcial, alumno)` | `esDerrochon(unCliente)` |
 | el alumno **delega** pasándose a sí mismo | el cliente **delega** pasándose a sí mismo (`self`) |
 
+### ¿Qué es Strategy?
+
+La definición de la clase 26 (5.1):
+
+> Un objeto **delega** una parte de su comportamiento en otro objeto **intercambiable** (la estrategia). Todas las estrategias son **polimórficas** entre sí.
+
+Dicho más simple: **en vez de que el objeto sepa resolver algo él mismo, tiene guardado otro objeto que sabe hacerlo, y se lo pregunta.** Como ese otro objeto está en una variable, se puede **cambiar por otro** que lo resuelva distinto, y el objeto original sigue siendo el mismo.
+
+**Una analogía: cómo vas a la facu.** Vos sos siempre la misma persona, pero un día vas en colectivo, otro en subte y otro en bici. "Ir a la facu" lo resuelve **el medio de transporte** que elegiste ese día. Algunas cosas cambian: cuánto tardás, cuánto pagás. Pero:
+
+- **Cambiar de medio no te cambia a vos**: seguís siendo la misma persona, con tus cosas.
+- **Podés cambiar cuando quieras**: hoy colectivo, mañana bici.
+- **Si aparece un medio nuevo** (un monopatín), no tenés que cambiar vos: alcanza con que el monopatín sepa llevarte.
+- **A vos no te importa cómo funciona cada medio**: solo le pedís que te lleve.
+
+En el TP: el cliente es la persona, el criterio de derroche es el medio de transporte, y "¿soy derrochón?" es "ir a la facu".
+
+### Las partes del patrón
+
+| Parte | Qué es | Clase 26 | Nuestro TP |
+|---|---|---|---|
+| **El que delega** | el objeto que tiene guardada una estrategia y le pregunta | `Alumno` | `Cliente` |
+| **La referencia** | el atributo donde guarda la estrategia; se puede cambiar | `criterioParaEstudiar` | `criterioDeDerroche` |
+| **El mensaje común** | lo que entienden todas las estrategias | `estudiaPara(parcial, alumno)` | `esDerrochon(unCliente)` |
+| **Las estrategias** | los objetos intercambiables, cada uno con su forma de resolver | `Estudioso`, `Vago`, `HijoDelRigor` | `CriterioClasico`, `CriterioFiestero` |
+
+```
+ ┌──────────┐  criterioDeDerroche  ┌────────────────────────┐
+ │ Cliente  │─────────────────────▶│ esDerrochon(unCliente) │  (mensaje común)
+ └──────────┘          1           └───────────▲────────────┘
+                              ┌────────────────┴────────────────┐
+                    ┌─────────┴────────┐              ┌─────────┴────────┐
+                    │ CriterioClasico  │              │ CriterioFiestero │
+                    └──────────────────┘              └──────────────────┘
+```
+
+### Cómo funciona: el cliente delega y se pasa a sí mismo
+
+```wollok
+method esDerrochon() = criterioDeDerroche.esDerrochon(self)
+```
+
+El cliente **no decide** si es derrochón: le pregunta a su criterio. Y le pasa `self` (a sí mismo) porque el criterio necesita **datos del cliente** para decidir: sus servicios y su fiesta.
+
+**Traza con Milena** (ahorra $100.000 y contrata a Los Tilos por $6.000):
+
+```
+milena.esDerrochon()
+└─ criterioDeDerroche es criterioClasico
+   └─ criterioClasico.esDerrochon(milena)
+      └─ ¿algún servicio de milena cuesta más de $3.000?  Los Tilos: $6.000 → sí
+→ true
+```
+
+**Ahora Milena cambia de criterio:**
+
+```wollok
+milena.cambiarCriterioDerroche(criterioFiestero)
+```
+
+```
+milena.esDerrochon()                              ← la misma milena, con los mismos servicios
+└─ criterioDeDerroche ahora es criterioFiestero
+   └─ criterioFiestero.esDerrochon(milena)
+      ├─ criterioClasico.esDerrochon(milena) → true    (pagó $6.000)
+      └─ !milena.fiesta().esLarga()          → false   (su fiesta dura 6 horas: es larga)
+→ true && false = false
+```
+
+**Mismo objeto, misma pregunta, otra respuesta**, porque cambió la estrategia que tiene guardada. Milena no se creó de nuevo: conserva su identidad, sus ahorros y sus servicios.
+
+### ¿Por qué es composición y no herencia?
+
+Strategy se basa en **composición** (clase 26): el cliente **tiene** un criterio; no **es** un tipo de cliente.
+
+| | Herencia (entrega 2: `Fiestero inherits Cliente`) | Composición (entrega 3: Strategy) |
+|---|---|---|
+| Relación | el cliente **es un** fiestero | el cliente **tiene un** criterio |
+| Es entre | **clases**: se decide al escribir `new Fiestero(...)` | **objetos**: se decide guardando una referencia |
+| ¿Se puede cambiar? | **No**: un objeto no puede cambiar de clase | **Sí**: se cambia la referencia |
+| Para cambiar de criterio | crear otro cliente y perder el anterior | `cambiarCriterioDerroche(...)` |
+
+La regla de la clase 27: **herencia para lo que no cambia, composición para lo que sí cambia**. El rubro de un proveedor no cambia → herencia. El criterio de un cliente cambia → composición.
+
+### La otra alternativa: un `if` adentro del cliente
+
+También se podría permitir el cambio sin Strategy, guardando un string y preguntando con `if`:
+
+```wollok
+class Cliente {
+    var tipoDerroche = "clasico"      // o "fiestero"
+    method esDerrochon() =
+        if (tipoDerroche == "clasico") self.pagoAlgoCaro()
+        else self.pagoAlgoCaro() && !fiesta.esLarga()
+}
+```
+
+Se puede cambiar (`tipoDerroche = "fiestero"`), pero es justo la primera versión del alumno de la clase 26 (2.1), la que después se mejora con Strategy:
+
+- **Strings mágicos**: `"clasico"` y `"fiestero"` no significan nada para Wollok. Un error de tipeo (`"fiestro"`) no avisa: cae en el `else`.
+- **Agregar un criterio obliga a modificar `Cliente`** y sumar otro `if`.
+- **`Cliente` pierde cohesión** (clase 26, 2): además de ahorrar y contratar, sabe todas las reglas de derroche.
+- **No se pueden testear las reglas por separado** del cliente.
+
+Con Strategy, cada criterio es un objeto que sabe su regla, y el cliente solo delega. La clase 26 dice que al alumno *"pasa de hacer 3 cosas a hacer 1: delegar"*.
+
+### ¿Qué cuesta? (clase 27)
+
+- **Más objetos**: el cliente y su criterio.
+- **Construir un cliente es más complejo**: hay que pasarle un criterio (`new Cliente(..., criterioDeDerroche = criterioClasico)`).
+- **El comportamiento queda repartido** en otro objeto, y a primera vista parece menos natural.
+- **El cliente tiene que dar acceso a sus datos** (`servicios()`, `fiesta()`) para que el criterio pueda preguntarle.
+
+Se paga a cambio de poder cambiar el criterio. Como la consigna lo pide, conviene.
+
+### Strategy vs. Template Method, en corto
+
+| | Strategy | Template Method |
+|---|---|---|
+| Mecanismo | **composición**: el objeto **tiene** otro y le delega | **herencia**: la subclase completa un hueco |
+| ¿Cuántos objetos? | dos (el cliente y el criterio) | uno (la fiesta, el proveedor) |
+| ¿Se puede cambiar después? | ✅ sí, se cambia la referencia | ❌ no, la clase es fija |
+| En el TP | criterio de derroche | `Proveedor.cuantoCobra`, `Evento.esComplicada` |
+
+### Si te preguntan "¿qué es Strategy?"
+
+**1. La definición, en una oración:**
+
+> "Es un patrón donde un objeto delega una parte de su comportamiento en otro objeto, la estrategia, que tiene guardado en un atributo. Todas las estrategias entienden el mismo mensaje, así que se pueden intercambiar."
+
+**2. La clave:**
+
+> "Como la estrategia está en una referencia, se puede cambiar en cualquier momento sin cambiar el objeto. Por eso se basa en composición y no en herencia: con herencia, la clase de un objeto no se puede cambiar."
+
+**3. El ejemplo del TP:**
+
+> "El cliente tiene un `criterioDeDerroche`. Cuando le preguntan si es derrochón, le pregunta a su criterio pasándose a sí mismo. `CriterioClasico` y `CriterioFiestero` entienden `esDerrochon(unCliente)`, y el cliente puede cambiar de uno a otro con `cambiarCriterioDerroche`, sin dejar de ser el mismo objeto."
+
+**Si piden más:**
+
+- **Por qué no herencia:** "En la entrega 2 el fiestero era una subclase, pero un objeto no puede cambiar de clase: para que Milena pasara a fiestera habría que crear otro cliente."
+- **Qué se gana:** "Cambiar el criterio en cualquier momento, agregar criterios nuevos sin tocar al cliente y un cliente más cohesivo."
+- **Qué cuesta:** "Más objetos, y construir un cliente pide pasarle un criterio."
+
+**La versión más corta:**
+
+> "En vez de resolverlo él, el objeto se lo pregunta a otro objeto que tiene guardado, y ese otro se puede cambiar."
+
 ### ¿Por qué ya no puede ser como en la entrega 2?
 
 En la entrega 2, `Fiestero` era una **subclase** de `Cliente`. Con herencia, **la clase de un objeto se decide al crearlo y no cambia nunca**: `damian` fue creado con `new Fiestero(...)` y es fiestero para siempre. Para que Milena "pase a ser fiestera" habría que crear **otro objeto** y perder la identidad (sus servicios, las referencias que la apuntan…).
@@ -292,42 +440,131 @@ Esa es **la interfaz** de un evento. Es la heurística *"Interfaz > implementaci
 
 ## Paso 2: la estructura es un Composite
 
-La clase 27 (6.2) define **Composite** como *"una estructura jerárquica donde ramas y hojas son polimórficas: quien las usa no distingue si son simples o compuestas"*. Es el caso del casamiento:
+### 2.1 El problema que resuelve
 
-| Clase 27 | Explorador de archivos | Nuestro TP |
+Hasta la entrega 2 había un solo tipo de evento: la **fiesta**, con sectores y una duración. En la entrega 3 aparecen eventos **hechos de otros eventos**:
+
+- El **casamiento** está hecho de tres eventos: el civil, la fiesta y el after.
+- El **fin de semana** está hecho del casamiento y el brunch. O sea, de un evento que **a su vez** está hecho de otros eventos.
+
+Eso forma un **árbol**:
+
+```
+finDeSemana
+├── casamiento
+│   ├── civil          (fiesta)
+│   ├── fiestaDamian   (fiesta)
+│   └── after          (fiesta)
+└── brunch             (fiesta)
+```
+
+Y la consigna pide que **los proveedores cobren igual** por cualquier punto de ese árbol: una fiesta suelta, el casamiento o el fin de semana. El Composite es la forma de armar ese árbol para que eso sea posible.
+
+### 2.2 La analogía de la clase 27: carpetas y archivos
+
+En el explorador de archivos:
+
+- Un **archivo** es una pieza simple: no contiene nada adentro.
+- Una **carpeta** contiene cosas, y esas cosas pueden ser **archivos u otras carpetas**.
+
+Si le preguntás a algo **"¿cuánto pesás?"**:
+
+- Un archivo responde **solo**: "peso 2 MB".
+- Una carpeta no tiene un peso propio: le pregunta a cada cosa que tiene adentro y **suma**. Si adentro hay otra carpeta, esa hace lo mismo con lo suyo.
+
+Para quien usa la compu **no hay diferencia**: puede preguntarle el peso, copiar o borrar tanto un archivo como una carpeta, sin importarle cuál es.
+
+**Eso es el Composite**: una estructura de **piezas simples** (archivos) y **piezas compuestas** (carpetas) que **responden a los mismos mensajes**, donde las compuestas pueden contener **cualquier tipo de pieza**, incluso otras compuestas.
+
+### 2.3 Las tres partes del patrón
+
+| Parte | Qué es | Carpetas | Nuestro TP |
+|---|---|---|---|
+| **Componente** | lo común a todas las piezas: qué mensajes entienden | "elemento del explorador" | `Evento` |
+| **Hoja** | pieza simple: responde sola, no contiene otras | archivo | `Fiesta` |
+| **Rama** (compuesto) | pieza que contiene otras piezas y responde preguntándoles a ellas | carpeta | `EventoPorEtapas` |
+
+"Un archivo nunca se convierte en directorio" (clase 27): una fiesta nunca pasa a ser un evento por etapas. Por eso hoja y rama pueden ser **subclases** de `Evento`: lo que no cambia va con herencia.
+
+### 2.4 Las dos claves
+
+**Clave 1: la hoja y la rama entienden los mismos mensajes.**
+
+`Fiesta` y `EventoPorEtapas` entienden `duracion()`, `cantidadDeSectores()`, `cantidadInvitados()`, `esLarga()`, `esComplicada()` y `complejidadDelEvento()`. Son **polimórficas**. Por eso un salón puede hacer `unEvento.duracion()` sin saber si `unEvento` es una fiesta o un casamiento: **quien usa el árbol no distingue hojas de ramas**.
+
+**Clave 2: la rama contiene *Eventos*, no *Fiestas*.**
+
+```wollok
+class EventoPorEtapas inherits Evento {
+    const etapas = []      // ← cada etapa es un Evento: puede ser Fiesta o EventoPorEtapas
+    ...
+}
+```
+
+Las etapas no son "fiestas": son **cualquier cosa que sea un evento**. Como un `EventoPorEtapas` **también es un evento**, puede ser la etapa de otro `EventoPorEtapas`. Eso permite meter el casamiento adentro del fin de semana, y así todos los niveles que se quieran.
+
+> **Detalle de Wollok**: una lista no tiene tipo, así que `etapas` podría guardar cualquier objeto. Lo que hace que el diseño sea un Composite no es lo que dice la lista, sino **qué mensajes le manda la rama a sus etapas**: tiene que usar solo mensajes que entienda **cualquier** evento, sea hoja o rama (ver Paso 10, alternativa 1).
+
+### 2.5 Las dos flechas entre `EventoPorEtapas` y `Evento`
+
+En el diagrama hay **dos flechas distintas** entre esas dos clases, y dicen cosas distintas:
+
+```
+            ┌──────────┐
+            │  Evento  │◀─────────────┐
+            └────▲─────┘              │  ② asociación: "tiene"
+                 │ ① herencia: "es un" │     (atributo etapas, *)
+         ┌───────┴───────┐            │
+         │EventoPorEtapas│────────────┘
+         └───────────────┘
+```
+
+| | ① Herencia | ② Asociación |
 |---|---|---|
-| Componente | archivo o directorio | `Evento` |
-| **Hoja** (simple) | archivo | `Fiesta` |
-| **Rama** (compuesta) | directorio (contiene archivos y directorios) | `EventoPorEtapas` (contiene fiestas y eventos por etapas) |
-| Mensaje polimórfico | abrir, copiar, eliminar | `cantidadInvitados()`, `duracion()`, `esComplicada()`… |
-| "Un archivo nunca se convierte en directorio" | | Una fiesta nunca pasa a ser un evento por etapas → **herencia** está bien |
+| Cómo se dibuja | flecha con **triángulo vacío** | flecha **abierta**, con el **nombre del atributo** y la cantidad (`*`) |
+| Qué dice | `EventoPorEtapas` **es un** `Evento` | un `EventoPorEtapas` **tiene** eventos adentro |
+| En el código | `class EventoPorEtapas inherits Evento` | `const etapas = []` |
+| Entre quiénes es | entre **clases** (el código) | entre **objetos** (las instancias) |
+| Qué le da | **los métodos** de `Evento`: `esLarga()`, `esComplicada()`, `complejidadDelEvento()` | **los objetos** a los que les va a preguntar: sus etapas |
+
+**① Herencia, qué *es***: le dice a Wollok que un evento por etapas **es** un evento, así que entiende todo lo que entiende un evento. Por eso `casamiento.esLarga()` funciona aunque `EventoPorEtapas` no tenga ese método escrito. Es la misma flecha que va de `Fiesta` a `Evento` o de `Salon` a `ProveedorPorSector`: una relación **entre clases**, que se decide al escribir el código y no cambia.
+
+**② Asociación, qué *tiene***: dice que cada objeto `EventoPorEtapas` **guarda una lista de objetos**, y que esos objetos son `Evento`s. No le da ningún método: le da **a quién preguntarle**. Es la misma clase de flecha que `Cliente → Servicio` (atributo `servicios`) o `Cliente → CriterioDerroche`: un cliente no *es* un servicio, *tiene* servicios. Igual, un casamiento no *es* sus etapas, *tiene* etapas.
+
+Se ve mejor mirando los **objetos** en vez de las clases:
 
 ```
-            ┌──────────────────────────┐
-            │      Evento (abstracta)  │◀────────────┐
-            │ cantidadInvitados()  abs │             │
-            │ cantidadDeSectores() abs │             │ etapas *
-            │ duracion()           abs │             │
-            │ esComplicada()           │             │
-            │ esLarga()                │             │
-            │ complejidadDelEvento()   │             │
-            └────────────▲─────────────┘             │
-              ┌──────────┴───────────┐               │
-     ┌────────┴────────┐    ┌────────┴────────┐      │
-     │     Fiesta      │    │ EventoPorEtapas │──────┘
-     │     (hoja)      │    │     (rama)      │
-     │ sectores        │    │ etapas          │
-     │ duracion        │    └─────────────────┘
-     └─────────────────┘
+casamiento (un EventoPorEtapas)
+  etapas ──▶ [ civil , fiestaDamian , after ]      ← ② cada uno es un objeto Fiesta
+
+finDeSemana (un EventoPorEtapas)
+  etapas ──▶ [ casamiento , brunch ]               ← ② casamiento es un EventoPorEtapas
 ```
 
-**La flecha que vuelve de `EventoPorEtapas` a `Evento` es la que hace al Composite**: las etapas son `Evento`s, así que cada una puede ser una fiesta **o** otro evento por etapas. Por eso se puede anidar todo lo que se quiera (el fin de semana contiene al casamiento, que contiene a la fiesta de Damián).
+La herencia no aparece en este dibujo, porque es de las clases y no de los objetos. Lo que aparece son las referencias que guarda cada evento.
 
-> **⚠️ Composite ≠ composición** (clase 27):
-> - **Composición**: un objeto **conoce a otro** (el cliente tiene su criterio, su fiesta).
-> - **Composite**: una jerarquía de **ramas y hojas polimórficas**, donde las ramas contienen componentes del mismo tipo.
->
-> En el TP están las dos: `Cliente → criterioDeDerroche` es composición (Strategy); `EventoPorEtapas → etapas` es Composite.
+**¿Por qué la asociación apunta a `Evento` y no a `Fiesta`?** Porque la flecha indica **qué tipo de cosa** puede haber en `etapas`. Si apuntara a `Fiesta`, las etapas solo podrían ser fiestas y el fin de semana no podría tener al casamiento adentro. Apuntando a `Evento`, una etapa puede ser **cualquier evento**.
+
+Y ahí se juntan las dos flechas: como `EventoPorEtapas` **es un** `Evento` (①), puede ser una de las etapas que **tiene** otro `EventoPorEtapas` (②). Con una sola no alcanza:
+
+| Solo herencia | Solo asociación (a `Fiesta`) | Las dos |
+|---|---|---|
+| Entendería los mensajes, pero no tendría etapas a quién preguntarles. | Tendría etapas, pero solo fiestas: no se podría anidar. | Entiende los mensajes **y** puede contener otros eventos por etapas → **Composite** |
+
+### 2.6 Composite no es lo mismo que composición
+
+Se parecen en el nombre, pero (clase 27):
+
+- **Composición**: un objeto **conoce a otro** y le delega algo. El cliente conoce a su criterio de derroche (Strategy).
+- **Composite**: un **árbol** de piezas simples y compuestas que entienden los mismos mensajes, donde las compuestas contienen piezas del mismo tipo general.
+
+En el TP están las dos: `Cliente → criterioDeDerroche` es composición; `EventoPorEtapas → etapas` es Composite.
+
+### En la defensa
+
+> "Usé Composite: `Fiesta` es la hoja, `EventoPorEtapas` es la rama y `Evento` es lo común. Las dos entienden los mismos mensajes, así que los proveedores no distinguen una de otra. Y como las etapas son `Evento`s, una etapa puede ser otra rama: por eso el fin de semana puede contener al casamiento. La rama responde preguntándole lo mismo a cada etapa y sumando."
+
+> "En el diagrama hay dos flechas entre `EventoPorEtapas` y `Evento`. La de herencia dice que un evento por etapas **es** un evento, y por eso los proveedores lo pueden usar igual que una fiesta. La otra es el atributo `etapas`: dice que **tiene** eventos adentro. Como esos eventos pueden ser a su vez eventos por etapas, se pueden anidar."
 
 ## Paso 3: el código
 
@@ -369,7 +606,128 @@ Entonces:
 - **`Evento` define las reglas una sola vez**, a partir de tres métodos **abstractos**: `cantidadDeSectores()`, `duracion()` y `cantidadInvitados()`.
 - **Cada subclase completa solo esos tres**: la fiesta con sus sectores y su duración; el evento por etapas sumando sus etapas.
 
-Es otro **Template Method**: `esComplicada()` es el esqueleto ("más de 3 sectores") y `cantidadDeSectores()` es la primitiva. La clase 27 dice que el repo de manejo de proyectos tiene Template Method y Composite **juntos** (`Tarea.costo()` + `TareaSimple`/`TareaCompuesta`): acá pasa lo mismo.
+Eso es un **Template Method**. Abajo se explica qué es, qué son el esqueleto y la primitiva, y por qué `esComplicada()` es uno.
+
+### 4.1 ¿Qué es un Template Method?
+
+La definición de la clase 26 (5.2):
+
+> El **template method** define el **esqueleto de un algoritmo general** en una superclase, y le da a cada subclase la posibilidad de **redefinir una parte** de ese algoritmo.
+
+Dicho más simple: **la superclase escribe los pasos de una cuenta, pero deja un paso sin resolver**. Ese paso lo resuelve cada subclase a su manera. La cuenta se escribe una sola vez y lo único que cambia es el paso que falta.
+
+**Una analogía: una receta con un hueco.** "Torta: mezclar harina y huevos, **agregar el sabor**, hornear 40 minutos." La receta es la misma para todas las tortas; lo único que cambia es "agregar el sabor": la de chocolate le pone cacao y la de limón, ralladura. Nadie reescribe la receta entera para cada torta: solo dice cuál es su sabor.
+
+**El ejemplo de la clase 26**: un contenido es interesante si tiene presupuesto de más de 5 millones **y** cumple una condición propia. La serie la cumple si tiene menos de 5 temporadas; la película, si se estrenó este año.
+
+```wollok
+class Contenido {
+  const presupuesto
+  method esInteresante() = presupuesto > 5000000 && self.cumpleCriterioInteresante()   // el esqueleto
+  method cumpleCriterioInteresante()                                                     // la primitiva (el hueco)
+}
+
+class Serie inherits Contenido {
+  const temporadas
+  override method cumpleCriterioInteresante() = temporadas < 5                           // completa el hueco
+}
+```
+
+### 4.2 El esqueleto y la primitiva
+
+Son las **dos partes** de un Template Method:
+
+| | **Esqueleto** (el template method) | **Primitiva** (el hueco) |
+|---|---|---|
+| Qué es | el método con **la cuenta completa**, la parte que es igual para todos | el **paso que falta**, el que cambia según la subclase |
+| Dónde está escrito | **una sola vez**, en la superclase | declarado en la superclase **sin cuerpo** (método abstracto) e implementado en **cada** subclase |
+| ¿Las subclases lo redefinen? | **No**: lo heredan tal cual | **Sí**: cada una tiene que implementarlo |
+| En la receta | "mezclar, agregar el sabor, hornear 40 minutos" | "agregar el sabor" |
+| En la clase 26 | `esInteresante()` | `cumpleCriterioInteresante()` |
+
+El nombre "esqueleto" es porque es la **estructura** de la cuenta, a la que le falta una parte para estar completa. El nombre "primitiva" es porque es la **pieza básica** que el esqueleto necesita y que no sabe calcular él mismo. En nuestro código las marcamos con el comentario `//Primitiva`.
+
+**¿Por qué se completa en la subclase?** Por `self`. Cuando el esqueleto hace `self.primitiva()`, `self` es el objeto que recibió el mensaje (una serie, una fiesta…), y el method lookup **empieza a buscar en su clase**. Por eso, aunque el esqueleto esté escrito en la superclase, encuentra la primitiva de la subclase. La clase 26: *"`self` siempre es el objeto receptor: aunque el código esté en la superclase, `self.algo()` busca primero en la subclase."*
+
+### 4.3 ¿Por qué `esComplicada()` es un Template Method?
+
+Porque tiene exactamente esas dos partes:
+
+```wollok
+class Evento {
+    method cantidadDeSectores()                                  // PRIMITIVA: sin cuerpo
+
+    method esComplicada() = self.cantidadDeSectores() > 3        // ESQUELETO: la regla, una sola vez
+}
+
+class Fiesta inherits Evento {
+    override method cantidadDeSectores() = sectores.size()       // completa el hueco: cuenta sus sectores
+}
+
+class EventoPorEtapas inherits Evento {
+    override method cantidadDeSectores() = etapas.sum({ etapa => etapa.cantidadDeSectores() })   // completa el hueco: suma sus etapas
+}
+```
+
+- **El esqueleto** es la regla "es complicado si tiene más de 3 sectores". Es **igual** para una fiesta y para un evento por etapas ("las mismas reglas de siempre"), así que está una sola vez, en `Evento`.
+- **La primitiva** es "cuántos sectores tengo". Es lo que **cambia**: la fiesta los cuenta y el evento por etapas los suma.
+- **Ninguna subclase redefine `esComplicada()`**: solo completan `cantidadDeSectores()`.
+
+Con `esLarga()` pasa lo mismo, con otra primitiva:
+
+| Esqueleto (en `Evento`) | Primitiva que usa | `Fiesta` la completa con… | `EventoPorEtapas` la completa con… |
+|---|---|---|---|
+| `esComplicada() = self.cantidadDeSectores() > 3` | `cantidadDeSectores()` | `sectores.size()` | la suma de las etapas |
+| `esLarga() = self.duracion() > 5` | `duracion()` | su atributo `duracion` | la suma de las etapas |
+| `complejidadDelEvento()` | usa `esLarga()` y `esComplicada()`, que a su vez usan las primitivas | — | — |
+
+### 4.4 ¿Por qué dice "**otro**" Template Method?
+
+Porque en el TP hay dos lugares con el mismo patrón:
+
+| | En los proveedores (punto 1) | En los eventos (mi punto) |
+|---|---|---|
+| Superclase | `Proveedor` | `Evento` |
+| Esqueleto | `cuantoCobra(unEvento) = self.costoServicio(unEvento) * self.nivel().porcentajeAumento()` | `esComplicada() = self.cantidadDeSectores() > 3` |
+| Lo que es igual para todos | aplicar el nivel | la regla de "más de 3 sectores" |
+| Primitiva | `costoServicio(unEvento)` | `cantidadDeSectores()` |
+| Lo que cambia | cuánto vale el trabajo de cada rubro | cómo se obtienen los sectores |
+| Subclases | `ProveedorPorSector`, `Catering` | `Fiesta`, `EventoPorEtapas` |
+
+La clase 27 dice que el repo de manejo de proyectos tiene Template Method y Composite **juntos** (`Tarea.costo()` + `TareaSimple`/`TareaCompuesta`): acá pasa lo mismo. El Composite arma el árbol de eventos, y el Template Method hace que las reglas estén una sola vez en la superclase.
+
+### 4.5 ¿Qué ganamos?
+
+- **La regla está una sola vez.** Si mañana "complicado" pasa a ser "más de 4 sectores", se cambia en un solo lugar y vale para fiestas y eventos por etapas.
+- **Las subclases no se pueden olvidar de la regla**: no la escriben, la heredan. Solo tienen que decir cuántos sectores tienen.
+- **Un tipo de evento nuevo** solo tiene que completar las tres primitivas, y ya entiende `esComplicada()`, `esLarga()` y `complejidadDelEvento()`.
+
+### Si te preguntan "¿qué es Template Method?"
+
+**1. La definición, en una oración:**
+
+> "Es un patrón donde la superclase define el esqueleto de un algoritmo, la parte que es igual para todos, y deja uno o más pasos como métodos abstractos para que cada subclase los complete con lo suyo."
+
+**2. Las dos partes, con nombre:**
+
+> "El esqueleto es el template method: está escrito una sola vez en la superclase y las subclases no lo redefinen. Los pasos que faltan son las primitivas: la superclase los declara sin cuerpo y cada subclase los implementa."
+
+**3. El ejemplo de mi punto:**
+
+> "En el TP, `esComplicada()` en `Evento` es el esqueleto: la regla de más de 3 sectores, igual para todos los eventos. `cantidadDeSectores()` es la primitiva: la fiesta cuenta sus sectores y el evento por etapas suma los de sus etapas. Funciona porque `self` es el objeto que recibió el mensaje, así que el lookup encuentra la primitiva en su clase."
+
+**Si piden más:**
+
+- **Qué se gana:** "La regla no se repite, y una subclase no se puede olvidar de aplicarla, porque no la escribe: la hereda."
+- **El otro lugar del TP donde está:** "En `Proveedor`, `cuantoCobra` es el esqueleto que aplica el nivel, y `costoServicio` es la primitiva que completa cada rubro."
+
+**La versión más corta:**
+
+> "La superclase escribe la cuenta una vez y deja un hueco; cada subclase completa solo el hueco."
+
+### En la defensa
+
+> "En `Evento` usé Template Method: `esComplicada()` es el esqueleto, la regla de más de 3 sectores, que es igual para todos los eventos y está escrita una sola vez. `cantidadDeSectores()` es la primitiva: un método abstracto que cada subclase completa. La fiesta cuenta sus sectores y el evento por etapas suma los de sus etapas. Funciona porque `self` es el evento que recibió el mensaje, así que el lookup encuentra la primitiva de su clase."
 
 **`Evento` es abstracta**: nunca se hace `new Evento()`. Según la clase 24 (5.1), en Wollok no hace falta declararlo: tiene métodos abstractos (sin cuerpo) y no se instancia.
 
@@ -396,6 +754,8 @@ finDeSemana.cantidadDeSectores()
  └─ brunch.cantidadDeSectores()        = 1   ← hoja
                                        = 7
 ```
+
+La pregunta **baja** por el árbol hasta las hojas, y las respuestas **suben** sumándose. La rama no tiene sectores propios: le pregunta lo mismo a cada etapa y suma. La hoja responde con lo suyo. Nadie usa un `if` para decidir qué hacer.
 
 ## Paso 6: qué **no** cambió
 
@@ -491,15 +851,136 @@ Están en el `describe "Entrega 3 - Punto 3: Eventos por etapas"`, al final de `
 - El caso del fin de semana es el que prueba el Composite de verdad: sin él, alcanzaría con una lista de fiestas.
 - Los objetos se toman del `fixtureCompartido` con variables del `describe` (clase 23).
 
-## Paso 10: alternativas que descarté (y por qué)
+## Paso 10: qué pasaría sin Composite (las alternativas descartadas)
+
+Las alternativas se entienden mejor viendo **dónde se rompen**. Para cada una: el código que tendríamos y qué pasa con el **fin de semana**, que es el caso que pone a prueba el diseño.
+
+### Alternativa 1: la rama mira adentro de las etapas
+
+```wollok
+class EventoPorEtapas inherits Evento {
+    const etapas = []
+    override method cantidadDeSectores() = etapas.sum({ etapa => etapa.sectores().size() })
+    ...
+}
+```
+
+Le pide a cada etapa **su lista de sectores** y la cuenta ella. Es pensar "las etapas son fiestas".
+
+- **Con el casamiento funciona**: sus tres etapas son fiestas y todas tienen `sectores()`. Da 1 + 4 + 1 = 6.
+- **Con el fin de semana se rompe**:
+
+```
+finDeSemana.cantidadDeSectores()
+├─ casamiento.sectores()   💥 error: casamiento no entiende sectores()
+└─ brunch.sectores()
+```
+
+El casamiento es un `EventoPorEtapas`: no tiene sectores propios, los tienen sus etapas. Wollok tira el error de que el objeto no entiende el mensaje.
+
+**En nuestro código**, la rama le pregunta a cada etapa `etapa.cantidadDeSectores()`, que lo entienden las fiestas y los eventos por etapas.
+
+> Es la "opción 1" de la clase 27: *"una subtarea no puede tener subtareas"*. Acá, una etapa no podría ser un evento por etapas.
+
+### Alternativa 2: el evento por etapas con mensajes propios
+
+Una clase aparte, sin heredar de `Evento` y con otros nombres:
+
+```wollok
+class Casamiento {
+    const etapas = []
+    method duracionTotal() = etapas.sum({ etapa => etapa.duracion() })
+    method sectoresTotales() = etapas.sum({ etapa => etapa.cantidadDeSectores() })
+    method invitadosTotales() = etapas.sum({ etapa => etapa.cantidadInvitados() })
+}
+```
+
+Parece razonable, pero:
+
+1. **Los proveedores no lo pueden cobrar.** Los Tilos hace `unEvento.cantidadDeSectores()` y `unEvento.duracion()`, y el casamiento no entiende esos mensajes, porque se llaman distinto. Habría que **cambiar todos los proveedores** con algo así:
+
+   ```wollok
+   // en cada proveedor 😬
+   override method adicionalProveedor(unEvento) =
+       if (unEvento es un casamiento) unEvento.duracionTotal() else unEvento.duracion()
+   ```
+
+   Además de que Wollok no tiene una forma linda de preguntar "¿es un casamiento?", la consigna dice que los proveedores tienen que cobrar **sin cambiar**.
+2. **No se puede anidar.** El fin de semana le pediría `etapa.duracion()` al casamiento, que solo entiende `duracionTotal()`. 💥
+3. **No tiene `esLarga()` ni `esComplicada()`.** Habría que copiar esas reglas en `Casamiento`: quedarían escritas dos veces.
+
+**En nuestro código**, `EventoPorEtapas` **hereda de `Evento`** y redefine **los mismos mensajes**. Por eso los proveedores, el cliente y los criterios lo usan igual que a una fiesta.
+
+### Alternativa 3: una sola clase `Fiesta` que a veces tiene etapas
+
+```wollok
+class Fiesta {
+    const sectores = []
+    const duracion = 0
+    const etapas = []
+
+    method cantidadDeSectores() =
+        if (etapas.isEmpty()) sectores.size()
+        else etapas.sum({ etapa => etapa.cantidadDeSectores() })
+
+    method duracion() =
+        if (etapas.isEmpty()) duracion
+        else etapas.sum({ etapa => etapa.duracion() })
+
+    method cantidadInvitados() =
+        if (etapas.isEmpty()) sectores.sum({ sector => sector.invitadosSector() })
+        else etapas.sum({ etapa => etapa.cantidadInvitados() })
+    ...
+}
+```
+
+**Funciona**, incluso con el fin de semana. Pero tiene problemas de diseño:
+
+- **El mismo `if` aparece en tres métodos** ("¿tengo etapas?"): idea repetida (clase 26, 4.1). Si se agrega otra pregunta sobre el evento, hay que acordarse de poner el `if` otra vez.
+- **Cada objeto tiene atributos que no usa.** Una fiesta simple tiene `etapas = []` vacía; el casamiento tiene `sectores = []` y `duracion = 0` que no significan nada. Da la falsa idea de que todo evento tiene sectores **y** etapas.
+- **Se puede armar algo sin sentido**: una fiesta con sectores **y** etapas a la vez. El `if` hace que valgan las etapas y los sectores se ignoren sin que nadie avise.
+- **Pierde cohesión** (clase 26, 2): la clase hace dos trabajos distintos según cómo la crearon.
+
+> Es la "opción 2" de la clase 27: *"hay que preguntar si tiene subtareas en tres lugares"* y *"da la falsa idea de que todas las tareas tienen subtareas"*.
+
+**En nuestro código**, cada clase hace una sola cosa: `Fiesta` siempre cuenta sus sectores, `EventoPorEtapas` siempre suma sus etapas. **No hay ningún `if`**: el "¿tengo etapas?" lo resuelve el **method lookup**.
+
+### Alternativa 4: aplanar todo en una lista de fiestas
+
+```wollok
+const finDeSemana = new EventoPorEtapas(etapas = [civil, fiestaDamian, after, brunch])
+```
+
+**Los números dan bien** (136 invitados, 7 sectores, 15 horas). Pero:
+
+- **Se pierde el casamiento como objeto.** La consigna dice que el fin de semana *"incluye el casamiento"*. Si el casamiento es la fiesta de Lucía y también parte del fin de semana, tiene que ser **el mismo objeto** en los dos lugares, no sus fiestas copiadas.
+- **Hay que repetir las etapas.** Si cambia el casamiento (se le agrega una etapa), hay que acordarse de cambiar también el fin de semana: dos datos que dicen lo mismo y que hay que mantener sincronizados.
+
+**En nuestro código**, el fin de semana tiene al casamiento **como una etapa más** (`etapas = [casamiento, brunch]`): el casamiento es uno solo.
+
+### Otras dos que también descartamos
 
 | Alternativa | Problema |
 |---|---|
 | **`EventoPorEtapas` hereda de `Fiesta`** | Heredaría `sectores` y `duracion` como atributos, que no tiene: sus sectores y su duración salen de las etapas. Un evento por etapas **no es una** fiesta. |
-| **Una sola clase `Fiesta` con una lista de etapas opcional** | Es la "opción 2" de la clase 27 (tarea con subtareas): habría que preguntar *"¿tiene etapas?"* en cada método, con `if`s, y da la falsa idea de que toda fiesta tiene etapas. |
-| **`EventoPorEtapas` con una lista de `Fiesta`s (y no de `Evento`s)** | Es la "opción 1" de la clase 27: una etapa no podría ser otro evento por etapas, y la consigna dice que sí puede. |
-| **Copiar `esLarga`/`esComplicada` en `EventoPorEtapas`** | Idea repetida; si cambia la regla, hay que cambiarla en dos lugares. |
-| **Composición (que la fiesta "tenga" una forma de calcular)** | Una fiesta nunca pasa a ser un evento por etapas: lo que no cambia va con herencia (clase 27, "Ideas que conectan"). |
+| **Copiar `esLarga`/`esComplicada` en `EventoPorEtapas`** | Idea repetida; si cambia la regla, hay que cambiarla en dos lugares. Por eso están en `Evento` (Paso 4). |
+
+### Resumen
+
+| Alternativa | ¿Casamiento? | ¿Fin de semana? | Problema |
+|---|---|---|---|
+| 1. La rama mira los sectores de las etapas | ✅ | 💥 | La rama pide algo que solo entienden las hojas |
+| 2. Clase aparte con otros mensajes | 💥 con los proveedores | 💥 | No es polimórfica: hay que cambiar los proveedores |
+| 3. Una sola clase con `if`s | ✅ | ✅ | `if` repetido, atributos sin sentido, poca cohesión |
+| 4. Aplanar en una lista | ✅ | ✅ en números | Se pierde el casamiento como objeto; datos duplicados |
+| **Composite (el nuestro)** | ✅ | ✅ | Más clases, pero cada una hace una sola cosa |
+
+**Las dos condiciones que tiene que cumplir el diseño**, y que el Composite cumple:
+
+1. **El evento por etapas entiende los mismos mensajes que una fiesta.** Si no, los proveedores no lo pueden cobrar (falla la alternativa 2).
+2. **El evento por etapas solo les manda a sus etapas mensajes que entiende cualquier evento.** Si no, una etapa no puede ser otro evento por etapas (falla la alternativa 1).
+
+Las alternativas 3 y 4 dan los números, pero son peores diseños: repiten ideas o duplican datos.
 
 ## Preguntas probables de la corrección (mi punto)
 
@@ -595,34 +1076,6 @@ Corrimos los tests que estaban en `master` (entrega 2) contra el código nuevo.
 - **Los derrochones dan igual**: los criterios calculan lo mismo; solo cambió dónde está la lógica.
 
 > Es lo que la clase 22 llama **test de regresión**: correr los mismos tests después de un cambio para ver qué se rompió. Y es la idea del **refactoring**: cambiar la estructura (herencia → Strategy, `Fiesta` → `Evento`) sin cambiar el comportamiento.
-
-## 4. El merge y el arreglo del fixture
-
-### El merge
-
-Cada uno hizo su punto en su rama y al juntarlos hubo conflictos en `example.wlk` y `tests.wtest`. Se eligió una mezcla de los dos diseños de proveedores:
-
-- De **Leandro**: el template method en `Proveedor` (el nivel se aplica **una sola vez**) y `experiencia`/`sumarExperiencia` una sola vez.
-- De **Matías**: la división `ProveedorPorSector` / `Catering` y el nombre `complejidadDelRol`.
-
-### El fixture: los clientes se **crean** cada vez
-
-En la entrega 2 el fixture guardaba los clientes como atributos:
-
-```wollok
-const property isabella = new Cliente(...)       // entrega 2
-```
-
-Probando los casos de experiencia de Matías apareció un problema: **la lista `servicios` de un cliente quedaba con los servicios de un test anterior** (Damián contrataba a Dodain dos veces y el total daba 12800 en vez de 9600, porque arrastraba los $3200 de Los Pibes de otro test). Cada test tiene que partir del estado inicial (clase 23), así que se cambió a:
-
-```wollok
-method isabella() = new Cliente(ahorros = 2750, fiesta = fiestaIsabella, porcentajeDisponible = 0.6, criterioDeDerroche = criterioClasico)
-```
-
-Ahora **cada vez que se pide un cliente, se crea uno nuevo**. Es lo que dice la clase 23: el fixture puede ser *"un objeto aparte (por ejemplo, uno que cree…)"* los objetos.
-
-- **Las fiestas sí se siguen guardando** (`const property fiestaIsabella`): no cambian, y además hace falta que la de Tomás sea **la misma** que la de Isabella, y la de Damián la misma que la del casamiento.
-- Por eso en los tests se usa `fixtureCompartido.isabella()` y no `fixtureCompartido.isabella`.
 
 ---
 ---
