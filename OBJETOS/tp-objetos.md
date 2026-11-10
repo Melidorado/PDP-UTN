@@ -1,5 +1,7 @@
 # TP Objetos — La fiesta de Isabella (para la corrección)
 
+> **La entrega 3 (niveles, criterio de derroche y eventos por etapas) está en [tp-objetos-entrega3.md](tp-objetos-entrega3.md).**
+>
 > Apunte de estudio del TP grupal (entregas 1 y 2). Por cada parte: **qué pide la consigna**, **cómo lo resolvimos**, y sobre todo **por qué** — que es lo que se pregunta en la defensa. Todo lo que se usa en el código está en los resúmenes de clase ([clase21](clase21.md), [clase22](clase22.md), [clase23](clase23.md), [clase24](clase24.md)).
 
 ---
